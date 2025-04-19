@@ -409,8 +409,8 @@ export default function PuntoVentaPage() {
   }
 
   const formatCurrency = (value: number | undefined) => {
-    if (value === undefined) return "0";
-    return value.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    if (value === undefined || isNaN(value)) return "$0";
+    return "$" + value.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
 
   return (
@@ -479,7 +479,7 @@ export default function PuntoVentaPage() {
                             Código: {producto.codigo}
                           </p>
                           <p className="text-sm font-medium">
-                            ${producto.precio.toFixed(2)} c/u
+                            {formatCurrency(producto.precio)} c/u
                           </p>
                         </div>
                         <Button
@@ -513,7 +513,7 @@ export default function PuntoVentaPage() {
                         </div>
                         <div className="text-right">
                           <p className="text-sm text-muted-foreground">Subtotal</p>
-                          <p className="font-medium">${producto.subtotal.toFixed(2)}</p>
+                          <p className="font-medium">{formatCurrency(producto.subtotal)}</p>
                         </div>
                       </div>
                     </Card>
@@ -536,11 +536,11 @@ export default function PuntoVentaPage() {
                 <div className="space-y-4">
                   <div className="flex justify-between">
                     <span>Subtotal:</span>
-                    <span>${subtotal.toFixed(2)}</span>
+                    <span>{formatCurrency(subtotal)}</span>
                   </div>
                   <div className="flex justify-between font-bold">
                     <span>Total:</span>
-                    <span>${total.toFixed(2)}</span>
+                    <span>{formatCurrency(total)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -604,7 +604,7 @@ export default function PuntoVentaPage() {
             <div className="text-center">
               <Receipt className="h-12 w-12 text-primary mx-auto mb-4" />
               <p className="text-responsive">Número de Venta: {ultimaVenta?.id}</p>
-              <p className="text-responsive">Total: ${formatCurrency(ultimaVenta?.total)}</p>
+              <p className="text-responsive">Total: {formatCurrency(ultimaVenta?.total)}</p>
             </div>
           </div>
           <DialogFooter>
