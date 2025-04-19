@@ -6,7 +6,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { BarChart3, ClipboardList, Home, LogOut, Menu, Package, ShoppingCart, Users, X } from "lucide-react"
+import { BarChart3, ClipboardList, Home, LogOut, Menu, Package, ShoppingCart, Users, X, Receipt } from "lucide-react"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -15,21 +15,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
 
   useEffect(() => {
-    // Verificar si hay un usuario en localStorage
     const usuarioActualStr = localStorage.getItem("usuarioActual")
-    if (!usuarioActualStr) {
-      router.push("/login")
-      return
-    }
-
-    try {
+    if (usuarioActualStr) {
       const usuarioActual = JSON.parse(usuarioActualStr)
       setUsuario(usuarioActual)
-    } catch (error) {
-      console.error("Error al parsear usuario:", error)
-      router.push("/login")
     }
-  }, [router])
+  }, [])
 
   const handleLogout = () => {
     localStorage.removeItem("usuarioActual")
@@ -56,6 +47,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       roles: ["administrador", "vendedor"],
     },
     {
+      title: "Categorías",
+      href: "/dashboard/categorias",
+      icon: ClipboardList,
+      roles: ["administrador"],
+    },
+    {
       title: "Usuarios",
       href: "/dashboard/usuarios",
       icon: Users,
@@ -66,6 +63,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       href: "/dashboard/reportes",
       icon: BarChart3,
       roles: ["administrador"],
+    },
+    {
+      title: "Historial de Ventas",
+      href: "/dashboard/historial-ventas",
+      icon: Receipt,
+      roles: ["administrador", "vendedor"],
     },
   ]
 

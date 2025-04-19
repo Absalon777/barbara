@@ -46,6 +46,8 @@ export default function InventarioPage() {
   const [esAdmin, setEsAdmin] = useState(false)
   const [tabActiva, setTabActiva] = useState("productos")
   const [movimientos, setMovimientos] = useState<any[]>([])
+  const [nuevaCategoria, setNuevaCategoria] = useState("")
+  const [creandoCategoria, setCreandoCategoria] = useState(false)
 
   const videoRef = useRef<HTMLDivElement>(null)
   const supabase = getSupabaseBrowserClient()
@@ -198,6 +200,24 @@ export default function InventarioPage() {
 
   const handleGuardarProducto = async () => {
     try {
+      // Validar código de barras único
+      if (!productoEditando.id) {
+        const { data: productoExistente, error: errorBusqueda } = await supabase
+          .from("productos")
+          .select("id")
+          .eq("codigo_barras", productoEditando.codigo_barras)
+          .single()
+
+        if (productoExistente) {
+          toast({
+            title: "Error",
+            description: "El código de barras ya existe, ingrese un producto diferente",
+            variant: "destructive",
+          })
+          return
+        }
+      }
+
       const usuarioActualStr = localStorage.getItem("usuarioActual")
       if (!usuarioActualStr) {
         toast({
@@ -308,6 +328,31 @@ export default function InventarioPage() {
       toast({
         title: "Error",
         description: err.message || "Error al guardar el producto",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleGuardarCategoria = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("categorias")
+        .insert({
+          nombre: nuevaCategoria,
+          descripcion: "",
+        })
+        .select()
+
+      if (error) throw error
+
+      setCategorias([...categorias, data[0]])
+      setProductoEditando({ ...productoEditando, categoria_id: data[0].id })
+      setCreandoCategoria(false)
+      setNuevaCategoria("")
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: "Error al crear la categoría",
         variant: "destructive",
       })
     }
@@ -451,6 +496,10 @@ export default function InventarioPage() {
     buscarProducto()
   }
 
+  const formatCurrency = (value: number) => {
+    return value.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center flex-wrap gap-2">
@@ -568,7 +617,7 @@ export default function InventarioPage() {
                             <TableCell>
                               <Badge variant="outline">{producto.categoria_nombre}</Badge>
                             </TableCell>
-                            <TableCell className="text-right">${producto.precio_venta.toLocaleString()}</TableCell>
+                            <TableCell className="text-right">${formatCurrency(producto.precio_venta)}</TableCell>
                             <TableCell className="text-center">
                               <Badge
                                 variant={producto.stock < producto.stock_minimo ? "destructive" : "default"}
@@ -699,11 +748,20 @@ export default function InventarioPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="codigo">Código de Barras</Label>
-                <Input
-                  id="codigo"
-                  value={productoEditando?.codigo_barras || ""}
-                  onChange={(e) => setProductoEditando({ ...productoEditando, codigo_barras: e.target.value })}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="codigo"
+                    value={productoEditando?.codigo_barras || ""}
+                    onChange={(e) => setProductoEditando({ ...productoEditando, codigo_barras: e.target.value })}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setEscanerActivo(true)}
+                  >
+                    <Camera className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nombre">Nombre</Label>
@@ -727,21 +785,44 @@ export default function InventarioPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="categoria">Categoría</Label>
-                <Select
-                  value={productoEditando?.categoria_id || ""}
-                  onValueChange={(value) => setProductoEditando({ ...productoEditando, categoria_id: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar categoría" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categorias.map((categoria) => (
-                      <SelectItem key={categoria.id} value={categoria.id}>
-                        {categoria.nombre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {creandoCategoria ? (
+                  <div className="flex gap-2">
+                    <Input
+                      value={nuevaCategoria}
+                      onChange={(e) => setNuevaCategoria(e.target.value)}
+                      placeholder="Nombre de la categoría"
+                    />
+                    <Button onClick={handleGuardarCategoria}>
+                      <Save className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" onClick={() => setCreandoCategoria(false)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Select
+                    value={productoEditando?.categoria_id || ""}
+                    onValueChange={(value) => {
+                      if (value === "nueva") {
+                        setCreandoCategoria(true)
+                      } else {
+                        setProductoEditando({ ...productoEditando, categoria_id: value })
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar categoría" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categorias.map((categoria) => (
+                        <SelectItem key={categoria.id} value={categoria.id}>
+                          {categoria.nombre}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="nueva">Crear nueva categoría</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="proveedor">Proveedor</Label>
@@ -763,14 +844,14 @@ export default function InventarioPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="precio_venta">Precio Venta</Label>
                 <Input
                   id="precio_venta"
                   type="number"
-                  value={productoEditando?.precio_venta || 0}
-                  onChange={(e) => setProductoEditando({ ...productoEditando, precio_venta: Number(e.target.value) })}
+                  value={productoEditando?.precio_venta || ""}
+                  onChange={(e) => setProductoEditando({ ...productoEditando, precio_venta: Number(e.target.value) || "" })}
                 />
               </div>
               <div className="space-y-2">
@@ -778,8 +859,8 @@ export default function InventarioPage() {
                 <Input
                   id="precio_costo"
                   type="number"
-                  value={productoEditando?.precio_costo || 0}
-                  onChange={(e) => setProductoEditando({ ...productoEditando, precio_costo: Number(e.target.value) })}
+                  value={productoEditando?.precio_costo || ""}
+                  onChange={(e) => setProductoEditando({ ...productoEditando, precio_costo: Number(e.target.value) || "" })}
                 />
               </div>
               <div className="space-y-2">
@@ -787,8 +868,8 @@ export default function InventarioPage() {
                 <Input
                   id="stock_minimo"
                   type="number"
-                  value={productoEditando?.stock_minimo || 0}
-                  onChange={(e) => setProductoEditando({ ...productoEditando, stock_minimo: Number(e.target.value) })}
+                  value={productoEditando?.stock_minimo || ""}
+                  onChange={(e) => setProductoEditando({ ...productoEditando, stock_minimo: Number(e.target.value) || "" })}
                 />
               </div>
             </div>
@@ -799,8 +880,8 @@ export default function InventarioPage() {
                 <Input
                   id="stock_inicial"
                   type="number"
-                  value={productoEditando?.stock || 0}
-                  onChange={(e) => setProductoEditando({ ...productoEditando, stock: Number(e.target.value) })}
+                  value={productoEditando?.stock || ""}
+                  onChange={(e) => setProductoEditando({ ...productoEditando, stock: Number(e.target.value) || "" })}
                 />
               </div>
             )}
@@ -887,6 +968,27 @@ export default function InventarioPage() {
               Registrar Movimiento
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo del Escáner */}
+      <Dialog open={escanerActivo} onOpenChange={setEscanerActivo}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Escáner de Código de Barras</DialogTitle>
+            <DialogDescription>
+              Apunta la cámara hacia el código de barras del producto
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4" ref={videoRef}>
+            <BarcodeScanner 
+              onDetected={(code) => {
+                setProductoEditando({ ...productoEditando, codigo_barras: code })
+                setEscanerActivo(false)
+              }} 
+              onClose={() => setEscanerActivo(false)} 
+            />
+          </div>
         </DialogContent>
       </Dialog>
     </div>

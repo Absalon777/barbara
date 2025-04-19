@@ -24,39 +24,32 @@ import { Edit, Plus, Search, Save } from "lucide-react"
 import { getSupabaseBrowserClient } from "@/lib/supabase-auth"
 import { useToast } from "@/hooks/use-toast"
 import { validarRut, formatearRut } from "@/lib/utils"
+import { useRouter } from "next/navigation"
+import * as bcrypt from "bcryptjs"
 
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<any[]>([])
   const [busqueda, setBusqueda] = useState("")
-  const [usuarioEditando, setUsuarioEditando] = useState<any>(null)
+  const [usuarioEditando, setUsuarioEditando] = useState<any>({
+    id: null,
+    rut: "",
+    nombre: "",
+    email: "",
+    rol: "vendedor",
+    activo: true,
+    password: "",
+  })
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [esAdmin, setEsAdmin] = useState(false)
+  const router = useRouter()
 
   const supabase = getSupabaseBrowserClient()
   const { toast } = useToast()
 
   useEffect(() => {
-    const verificarRol = () => {
-      const usuarioActualStr = localStorage.getItem("usuarioActual")
-      if (usuarioActualStr) {
-        const usuarioActual = JSON.parse(usuarioActualStr)
-        setEsAdmin(usuarioActual.rol === "administrador")
-
-        if (usuarioActual.rol !== "administrador") {
-          // Redirigir si no es administrador
-          window.location.href = "/dashboard"
-        }
-      } else {
-        // Redirigir si no hay usuario
-        window.location.href = "/login"
-      }
-    }
-
-    verificarRol()
     cargarUsuarios()
-  }, [])
+  }, [router])
 
   const cargarUsuarios = async () => {
     setCargando(true)
@@ -91,176 +84,121 @@ export default function UsuariosPage() {
     setUsuarios(resultados)
   }
 
-  const handleNuevoUsuario = () => {
-    setUsuarioEditando({
-      id: "",
-      rut: "",
-      nombre: "",
-      email: "",
-      password: "",
-      rol: "vendedor",
-      activo: true,
-    })
-    setDialogoAbierto(true)
-  }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setCargando(true)
 
-  const handleEditarUsuario = (usuario: any) => {
-    setUsuarioEditando({
-      ...usuario,
-      password: "", // No mostrar la contraseña actual
-    })
-    setDialogoAbierto(true)
-  }
-
-  const handleRutChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\./g, "").replace(/-/g, "")
-    if (value.length <= 9 && /^[0-9kK]*$/.test(value)) {
-      setUsuarioEditando({ ...usuarioEditando, rut: value })
-    }
-  }
-
-  const handleGuardarUsuario = async () => {
     try {
-      // Validar RUT
-      const rutFormateado = usuarioEditando.rut.replace(/\./g, "").replace(/-/g, "")
-      const rutCuerpo = rutFormateado.slice(0, -1)
-      const dv = rutFormateado.slice(-1)
-      const rutConFormato = `${rutCuerpo}-${dv}`
-
-      if (!validarRut(rutConFormato)) {
-        toast({
-          title: "RUT inválido",
-          description: "El RUT ingresado no es válido",
-          variant: "destructive",
-        })
+      // Validar campos requeridos
+      if (!usuarioEditando.nombre || !usuarioEditando.email || !usuarioEditando.rol) {
+        setError("Todos los campos son requeridos")
+        setCargando(false)
         return
       }
 
-      // Validar campos obligatorios
-      if (!usuarioEditando.nombre || !usuarioEditando.email) {
-        toast({
-          title: "Campos incompletos",
-          description: "Todos los campos son obligatorios",
-          variant: "destructive",
-        })
+      // Si es un nuevo usuario, validar contraseña
+      if (!usuarioEditando.id && !usuarioEditando.password) {
+        setError("La contraseña es requerida para nuevos usuarios")
+        setCargando(false)
         return
       }
 
-      const usuarioActualStr = localStorage.getItem("usuarioActual")
-      if (!usuarioActualStr) {
-        toast({
-          title: "Error",
-          description: "No se pudo identificar al usuario",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const usuarioActual = JSON.parse(usuarioActualStr)
-
-      if (usuarioEditando.id) {
-        // Actualizar usuario existente
-        const datosActualizados: any = {
-          rut: rutConFormato,
-          nombre: usuarioEditando.nombre,
-          email: usuarioEditando.email,
-          rol: usuarioEditando.rol,
-          activo: usuarioEditando.activo,
-          updated_at: new Date(),
-        }
-
-        // Solo actualizar la contraseña si se proporciona una nueva
-        if (usuarioEditando.password) {
-          datosActualizados.password_hash = "$2a$10$XOPbrlUPQdwdJUpSrIF6X.LbE14qsMmKGq4V41JGqMgvQ7U.yKJSq" // Contraseña simulada
-        }
-
-        const { error } = await supabase.from("usuarios").update(datosActualizados).eq("id", usuarioEditando.id)
-
-        if (error) throw error
-
-        // Registrar la acción en logs
-        await supabase.from("logs_actividad").insert({
-          usuario_id: usuarioActual.id,
-          accion: "editar",
-          tabla: "usuarios",
-          registro_id: usuarioEditando.id,
-          detalles: `Actualización de usuario: ${usuarioEditando.nombre}`,
-          ip_address: "127.0.0.1",
-        })
-
-        toast({
-          title: "Usuario actualizado",
-          description: "El usuario se ha actualizado correctamente",
-        })
-      } else {
+      // Crear o actualizar usuario
+      if (!usuarioEditando.id) {
         // Crear nuevo usuario
-        if (!usuarioEditando.password) {
-          toast({
-            title: "Contraseña requerida",
-            description: "Debe proporcionar una contraseña para el nuevo usuario",
-            variant: "destructive",
-          })
-          return
-        }
-
-        const { data, error } = await supabase
+        const { data: newUser, error: createError } = await supabase
           .from("usuarios")
           .insert({
-            rut: rutConFormato,
+            rut: usuarioEditando.rut,
             nombre: usuarioEditando.nombre,
             email: usuarioEditando.email,
-            password_hash: "$2a$10$XOPbrlUPQdwdJUpSrIF6X.LbE14qsMmKGq4V41JGqMgvQ7U.yKJSq", // Contraseña simulada
             rol: usuarioEditando.rol,
-            activo: usuarioEditando.activo,
+            activo: true,
+            password: usuarioEditando.password, // Temporalmente guardamos la contraseña sin hash
           })
           .select()
+          .single()
 
-        if (error) throw error
-
-        if (data && data.length > 0) {
-          // Registrar la acción en logs
-          await supabase.from("logs_actividad").insert({
-            usuario_id: usuarioActual.id,
-            accion: "crear",
-            tabla: "usuarios",
-            registro_id: data[0].id,
-            detalles: `Creación de usuario: ${usuarioEditando.nombre}`,
-            ip_address: "127.0.0.1",
-          })
+        if (createError) {
+          console.error("Error al crear usuario:", createError)
+          setError("Error al crear el usuario. Por favor, intenta nuevamente.")
+          setCargando(false)
+          return
         }
 
         toast({
           title: "Usuario creado",
-          description: "El usuario se ha creado correctamente",
+          description: "El usuario se ha creado correctamente.",
+        })
+      } else {
+        // Actualizar usuario existente
+        const updateData: any = {
+          nombre: usuarioEditando.nombre,
+          email: usuarioEditando.email,
+          rol: usuarioEditando.rol,
+          activo: usuarioEditando.activo,
+        }
+
+        // Solo actualizar la contraseña si se proporciona una nueva
+        if (usuarioEditando.password) {
+          const salt = bcrypt.genSaltSync(10)
+          const hash = bcrypt.hashSync(usuarioEditando.password, salt)
+          updateData.password_hash = hash
+        }
+
+        const { error: updateError } = await supabase
+          .from("usuarios")
+          .update(updateData)
+          .eq("id", usuarioEditando.id)
+
+        if (updateError) {
+          console.error("Error al actualizar usuario:", updateError)
+          setError(`Error al actualizar el usuario: ${updateError.message}. Por favor, intenta nuevamente.`)
+          setCargando(false)
+          return
+        }
+
+        toast({
+          title: "Usuario actualizado",
+          description: "El usuario se ha actualizado correctamente.",
         })
       }
 
+      // Limpiar formulario y recargar usuarios
+      setUsuarioEditando({
+        id: null,
+        rut: "",
+        nombre: "",
+        email: "",
+        rol: "vendedor",
+        activo: true,
+        password: "",
+      })
       setDialogoAbierto(false)
       cargarUsuarios()
-    } catch (err: any) {
-      console.error("Error al guardar usuario:", err)
-      toast({
-        title: "Error",
-        description: err.message || "Error al guardar el usuario",
-        variant: "destructive",
-      })
+    } catch (err) {
+      console.error("Error en el manejo del usuario:", err)
+      setError("Ocurrió un error. Por favor, intenta nuevamente.")
+    } finally {
+      setCargando(false)
     }
   }
 
-  if (!esAdmin) {
+  if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)]">
-        <h1 className="text-2xl font-bold mb-4">Acceso Denegado</h1>
-        <p className="text-muted-foreground">No tienes permisos para acceder a esta sección.</p>
+        <h1 className="text-2xl font-bold mb-4">Error</h1>
+        <p className="text-muted-foreground">{error}</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Gestión de Usuarios</h1>
-        <Button onClick={handleNuevoUsuario}>
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Gestión de Usuarios</h1>
+        <Button onClick={() => setDialogoAbierto(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Nuevo Usuario
         </Button>
@@ -338,7 +276,13 @@ export default function UsuariosPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => handleEditarUsuario(usuario)}>
+                          <Button variant="ghost" size="icon" onClick={() => {
+                            setUsuarioEditando({
+                              ...usuario,
+                              password: "", // No mostrar la contraseña actual
+                            })
+                            setDialogoAbierto(true)
+                          }}>
                             <Edit className="h-4 w-4" />
                           </Button>
                         </TableCell>
@@ -365,8 +309,8 @@ export default function UsuariosPage() {
               <Label htmlFor="rut">RUT</Label>
               <Input
                 id="rut"
-                value={usuarioEditando?.rut.length > 1 ? formatearRut(usuarioEditando.rut) : usuarioEditando?.rut || ""}
-                onChange={handleRutChange}
+                value={usuarioEditando?.rut || ""}
+                onChange={(e) => setUsuarioEditando({ ...usuarioEditando, rut: e.target.value })}
                 disabled={!!usuarioEditando?.id} // Deshabilitar edición de RUT para usuarios existentes
               />
             </div>
@@ -396,7 +340,7 @@ export default function UsuariosPage() {
               </Label>
               <Input
                 id="password"
-                type="password"
+                type="text" // Temporalmente mostramos la contraseña
                 value={usuarioEditando?.password || ""}
                 onChange={(e) => setUsuarioEditando({ ...usuarioEditando, password: e.target.value })}
               />
@@ -434,7 +378,7 @@ export default function UsuariosPage() {
             <Button variant="outline" onClick={() => setDialogoAbierto(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleGuardarUsuario}>
+            <Button onClick={handleSubmit}>
               <Save className="mr-2 h-4 w-4" />
               Guardar Cambios
             </Button>

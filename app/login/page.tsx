@@ -6,6 +6,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSupabaseBrowserClient } from "@/lib/supabase-auth"
 import { validarRut, formatearRut } from "@/lib/utils"
+import * as bcrypt from "bcryptjs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -46,108 +47,61 @@ export default function LoginPage() {
         return
       }
 
-      console.log("Intentando autenticar con:", rutConFormato, password)
+      // Buscar usuario por RUT
+      const { data: userData, error: userError } = await supabase
+        .from("usuarios")
+        .select("*")
+        .eq("rut", rutConFormato)
+        .single()
 
-      // Para fines de demostración, permitimos iniciar sesión con credenciales fijas
-      // En un sistema real, esto se haría con Supabase Auth
-      if (
-        (rutConFormato === "21003588-5" && password === "Admin123") ||
-        (rutConFormato === "22222222-2" && password === "Vendedor123456")
-      ) {
-        console.log("Autenticación exitosa con credenciales fijas")
+      if (userError || !userData) {
+        console.error("Error al obtener usuario:", userError)
+        setError("Usuario no encontrado")
+        setLoading(false)
+        return
+      }
 
-        // Obtener información del usuario
-        const { data: userData, error: userError } = await supabase
-          .from("usuarios")
-          .select("id, rol, activo, nombre")
-          .eq("rut", rutConFormato)
-          .single()
+      if (!userData.activo) {
+        setError("Tu cuenta está desactivada. Contacta al administrador.")
+        setLoading(false)
+        return
+      }
 
-        if (userError || !userData) {
-          console.error("Error al obtener datos del usuario:", userError)
-          setError("Usuario no encontrado o inactivo")
-          setLoading(false)
-          return
-        }
+      // Verificar contraseña
+      const isValidPassword = await bcrypt.compare(password, userData.password_hash)
+      if (!isValidPassword) {
+        setError("Contraseña incorrecta")
+        setLoading(false)
+        return
+      }
 
-        if (!userData.activo) {
-          setError("Tu cuenta está desactivada. Contacta al administrador.")
-          setLoading(false)
-          return
-        }
-
-        // Almacenar información del usuario en localStorage para simular una sesión
-        localStorage.setItem(
-          "usuarioActual",
-          JSON.stringify({
-            id: userData.id,
-            rut: rutConFormato,
-            nombre: userData.nombre,
-            rol: userData.rol,
-            activo: userData.activo,
-          }),
-        )
-
-        // Registrar el inicio de sesión en logs_actividad
-        await supabase.from("logs_actividad").insert({
-          usuario_id: userData.id,
-          accion: "login",
-          tabla: "usuarios",
-          registro_id: userData.id,
-          detalles: "Inicio de sesión exitoso",
-          ip_address: "127.0.0.1", // En un sistema real, se obtendría la IP real
+      // Almacenar información del usuario en localStorage
+      localStorage.setItem(
+        "usuarioActual",
+        JSON.stringify({
+          id: userData.id,
+          rut: userData.rut,
+          nombre: userData.nombre,
+          rol: userData.rol,
+          activo: userData.activo,
         })
+      )
 
-        // Redirigir según el rol
-        if (userData.rol === "administrador") {
-          router.push("/dashboard")
-        } else {
-          router.push("/dashboard/ventas")
-        }
+      // Registrar el inicio de sesión en logs_actividad
+      await supabase.from("logs_actividad").insert({
+        usuario_id: userData.id,
+        accion: "login",
+        tabla: "usuarios",
+        registro_id: userData.id,
+        detalles: "Inicio de sesión exitoso",
+        ip_address: "127.0.0.1",
+      })
+
+      // Redirigir según el rol
+      if (userData.rol === "administrador") {
+        router.push("/dashboard")
       } else {
-        // Intento de autenticación con Supabase Auth (para sistemas reales)
-        try {
-          const { data, error: authError } = await supabase.auth.signInWithPassword({
-            email: `${rutConFormato}@sistema.cl`,
-            password,
-          })
-
-          if (authError) {
-            console.error("Error de autenticación con Supabase:", authError)
-            setError("Credenciales incorrectas. Por favor, verifica tu RUT y contraseña.")
-            setLoading(false)
-            return
-          }
-
-          // Verificar el rol del usuario en la tabla usuarios
-          const { data: userData, error: userError } = await supabase
-            .from("usuarios")
-            .select("rol, activo")
-            .eq("rut", rutConFormato)
-            .single()
-
-          if (userError || !userData) {
-            setError("Usuario no encontrado o inactivo")
-            setLoading(false)
-            return
-          }
-
-          if (!userData.activo) {
-            setError("Tu cuenta está desactivada. Contacta al administrador.")
-            setLoading(false)
-            return
-          }
-
-          // Redirigir según el rol
-          if (userData.rol === "administrador") {
-            router.push("/dashboard")
-          } else {
-            router.push("/dashboard/ventas")
-          }
-        } catch (authErr) {
-          console.error("Error en autenticación con Supabase:", authErr)
-          setError("Credenciales incorrectas. Por favor, verifica tu RUT y contraseña.")
-        }
+        router.push("/dashboard/ventas")
       }
     } catch (err) {
       console.error("Error en el inicio de sesión:", err)

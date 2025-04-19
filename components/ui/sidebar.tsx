@@ -3,9 +3,9 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { VariantProps, cva } from "class-variance-authority"
-import { PanelLeft } from "lucide-react"
+import { PanelLeft, Home, ShoppingCart, Package, Users, Settings, LogOut, ClipboardList } from "lucide-react"
 
-import { useIsMobile } from "@/hooks/use-mobile"
+import { useMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,7 +67,7 @@ const SidebarProvider = React.forwardRef<
     },
     ref
   ) => {
-    const isMobile = useIsMobile()
+    const isMobile = useMobile()
     const [openMobile, setOpenMobile] = React.useState(false)
 
     // This is the internal state of the sidebar.
@@ -734,6 +734,39 @@ const SidebarMenuSubButton = React.forwardRef<
   )
 })
 SidebarMenuSubButton.displayName = "SidebarMenuSubButton"
+
+const menuItems = [
+  {
+    title: "Inicio",
+    href: "/dashboard",
+    icon: Home,
+  },
+  {
+    title: "Ventas",
+    href: "/dashboard/ventas",
+    icon: ShoppingCart,
+  },
+  {
+    title: "Inventario",
+    href: "/dashboard/inventario",
+    icon: Package,
+  },
+  {
+    title: "Categorías",
+    href: "/dashboard/categorias",
+    icon: ClipboardList,
+  },
+  {
+    title: "Usuarios",
+    href: "/dashboard/usuarios",
+    icon: Users,
+  },
+  {
+    title: "Configuración",
+    href: "/dashboard/configuracion",
+    icon: Settings,
+  },
+]
 
 export {
   Sidebar,

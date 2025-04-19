@@ -156,12 +156,8 @@ export default function PuntoVentaPage() {
 
   const calcularTotales = (items: ProductoCarrito[]) => {
     const nuevoSubtotal = items.reduce((acc, item) => acc + item.subtotal, 0)
-    const nuevoImpuestos = nuevoSubtotal * 0.19 // IVA 19%
-    const nuevoTotal = nuevoSubtotal + nuevoImpuestos
-
     setSubtotal(nuevoSubtotal)
-    setImpuestos(nuevoImpuestos)
-    setTotal(nuevoTotal)
+    setTotal(nuevoSubtotal) // Ya no sumamos el IVA
   }
 
   const handleCambiarCantidad = (id: string, incremento: number) => {
@@ -418,155 +414,156 @@ export default function PuntoVentaPage() {
     setUltimaVenta(null)
   }
 
-  return (
-    <div className="page-container">
-      <div className="content-wrapper">
-        <div className="container-responsive">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Sección de búsqueda y escaneo */}
-            <Card className="card-responsive">
-              <CardHeader>
-                <CardTitle className="heading-responsive">Agregar Productos</CardTitle>
-                <CardDescription className="text-responsive">
-                  Escanea o ingresa el código de barras del producto
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Input
-                      placeholder="Código de barras"
-                      value={codigoBarras}
-                      onChange={handleCodigoBarrasChange}
-                      className="text-responsive"
-                    />
-                    <Button
-                      onClick={handleBuscarProducto}
-                      disabled={cargando}
-                      className="text-responsive"
-                    >
-                      <Barcode className="mr-2 h-4 w-4" />
-                      Buscar
-                    </Button>
-                  </div>
-                  {isMobile && (
-                    <Button
-                      variant="outline"
-                      onClick={() => setEscanerActivo(!escanerActivo)}
-                      className="w-full text-responsive"
-                    >
-                      <Camera className="mr-2 h-4 w-4" />
-                      {escanerActivo ? "Detener Escáner" : "Iniciar Escáner"}
-                    </Button>
-                  )}
-                </div>
-                {escanerActivo && (
-                  <div className="mt-4" ref={videoRef}>
-                    <BarcodeScanner onDetected={handleCodigoDetectado} onClose={() => setEscanerActivo(false)} />
-                  </div>
-                )}
-                {error && (
-                  <Alert variant="destructive" className="mt-4 text-responsive">
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
+  const formatCurrency = (value: number | undefined) => {
+    if (value === undefined) return "0";
+    return value.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
 
-            {/* Sección del carrito */}
-            <Card className="card-responsive">
-              <CardHeader>
-                <CardTitle className="heading-responsive">Carrito de Compras</CardTitle>
-                <CardDescription className="text-responsive">
-                  {carrito.length} productos en el carrito
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="table-responsive">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-responsive">Producto</TableHead>
-                        <TableHead className="text-responsive">Cantidad</TableHead>
-                        <TableHead className="text-responsive">Precio</TableHead>
-                        <TableHead className="text-responsive">Subtotal</TableHead>
-                        <TableHead className="text-responsive">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {carrito.map((producto) => (
-                        <TableRow key={producto.id}>
-                          <TableCell className="text-responsive">{producto.nombre}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() => handleCambiarCantidad(producto.id, -1)}
-                                className="h-8 w-8"
-                              >
-                                <Minus className="h-4 w-4" />
-                              </Button>
-                              <span className="text-responsive">{producto.cantidad}</span>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() => handleCambiarCantidad(producto.id, 1)}
-                                className="h-8 w-8"
-                              >
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-responsive">
-                            ${producto.precio.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-responsive">
-                            ${producto.subtotal.toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEliminarProducto(producto.id)}
-                              className="h-8 w-8"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-              <CardFooter className="flex flex-col space-y-4">
-                <div className="w-full space-y-2">
-                  <div className="flex justify-between text-responsive">
-                    <span>Subtotal:</span>
-                    <span>${subtotal.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-responsive">
-                    <span>IVA (19%):</span>
-                    <span>${impuestos.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-responsive">
-                    <span>Total:</span>
-                    <span>${total.toLocaleString()}</span>
-                  </div>
-                </div>
-                <Button
-                  onClick={handleFinalizarVenta}
-                  disabled={carrito.length === 0}
-                  className="w-full text-responsive"
-                >
-                  <ShoppingCart className="mr-2 h-4 w-4" />
-                  Finalizar Venta
-                </Button>
-              </CardFooter>
-            </Card>
+  return (
+    <div className="container mx-auto p-4 space-y-6">
+      <div className="flex flex-col md:flex-row gap-4">
+        <Card className="flex-1">
+          <CardHeader>
+            <CardTitle>Punto de Venta</CardTitle>
+            <CardDescription>Escanea o ingresa el código de barras del producto</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <Input
+                  type="text"
+                  placeholder="Código de barras"
+                  value={codigoBarras}
+                  onChange={handleCodigoBarrasChange}
+                  onKeyPress={(e) => e.key === "Enter" && handleBuscarProducto()}
+                />
+              </div>
+              <Button onClick={handleBuscarProducto} disabled={cargando}>
+                <Barcode className="mr-2 h-4 w-4" />
+                Buscar
+              </Button>
+              <Button onClick={() => setEscanerActivo(true)}>
+                <Camera className="mr-2 h-4 w-4" />
+                Iniciar Escáner
+              </Button>
+            </div>
+            {error && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Diálogo del Escáner */}
+      <Dialog open={escanerActivo} onOpenChange={setEscanerActivo}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Escáner de Código de Barras</DialogTitle>
+            <DialogDescription>
+              Apunta la cámara hacia el código de barras del producto
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4" ref={videoRef}>
+            <BarcodeScanner 
+              onDetected={handleCodigoDetectado} 
+              onClose={() => setEscanerActivo(false)} 
+            />
           </div>
-        </div>
+        </DialogContent>
+      </Dialog>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Productos ({carrito.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {carrito.map((producto) => (
+                <Card key={producto.id} className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <h3 className="font-medium">{producto.nombre}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Código: {producto.codigo}
+                      </p>
+                      <p className="text-sm font-medium">
+                        ${producto.precio.toFixed(2)} c/u
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEliminarProducto(producto.id)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCambiarCantidad(producto.id, -1)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <span className="font-medium">{producto.cantidad}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCambiarCantidad(producto.id, 1)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">Subtotal</p>
+                      <p className="font-medium">${producto.subtotal.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+              {carrito.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No hay productos en el carrito
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Resumen</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span>${subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-bold">
+                <span>Total:</span>
+                <span>${total.toFixed(2)}</span>
+              </div>
+            </div>
+          </CardContent>
+          <CardFooter>
+            <Button
+              className="w-full"
+              onClick={handleFinalizarVenta}
+              disabled={carrito.length === 0}
+            >
+              Finalizar Venta
+            </Button>
+          </CardFooter>
+        </Card>
       </div>
 
       {/* Diálogo de finalización de venta */}
@@ -621,7 +618,7 @@ export default function PuntoVentaPage() {
             <div className="text-center">
               <Receipt className="h-12 w-12 text-primary mx-auto mb-4" />
               <p className="text-responsive">Número de Venta: {ultimaVenta?.id}</p>
-              <p className="text-responsive">Total: ${ultimaVenta?.total.toLocaleString()}</p>
+              <p className="text-responsive">Total: ${formatCurrency(ultimaVenta?.total)}</p>
             </div>
           </div>
           <DialogFooter>
