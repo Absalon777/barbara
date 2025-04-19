@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { 
+import {
   Home, ShoppingCart, Box, Users, BarChart2, History, ClipboardList, Menu, X 
 } from "lucide-react"
 import { useMobile } from "@/hooks/use-mobile"
@@ -64,7 +64,7 @@ export function Sidebar() {
       <Link
         href={href}
         onClick={closeSidebar}
-        className={cn(
+            className={cn(
           "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
           pathname === href && "bg-muted text-primary",
         )}
@@ -72,10 +72,10 @@ export function Sidebar() {
         <Icon className="h-4 w-4" />
         {label}
       </Link>
-    )
-  }
+      )
+    }
 
-  return (
+    return (
     <>
         {/* Botón Hamburguesa para Móvil */} 
         {isMobile && (

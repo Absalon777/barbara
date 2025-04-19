@@ -23,7 +23,7 @@ import { Barcode, Camera, Minus, Plus, ShoppingCart, Trash2, X, Save, Receipt } 
 import { getSupabaseBrowserClient } from "@/lib/supabase-auth"
 import { useToast } from "@/hooks/use-toast"
 import { useMobile } from "@/hooks/use-mobile"
-import { BarcodeScanner } from "@/components/ui/barcode-scanner"
+import BarcodeScanner from "@/components/ui/barcode-scanner"
 
 // Importar la biblioteca para escaneo de códigos de barras
 import Quagga from "quagga"

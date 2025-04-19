@@ -23,7 +23,7 @@ import { Edit, Plus, Search, Camera, Barcode, Save, X } from "lucide-react"
 import { getSupabaseBrowserClient } from "@/lib/supabase-auth"
 import { useToast } from "@/hooks/use-toast"
 import { useMobile } from "@/hooks/use-mobile"
-import { BarcodeScanner } from "@/components/ui/barcode-scanner"
+import BarcodeScanner from "@/components/ui/barcode-scanner"
 
 // Definir tipos para mayor claridad (opcional pero recomendado)
 interface ProductoInventario {
