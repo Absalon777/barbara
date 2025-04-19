@@ -326,11 +326,81 @@ export default function PuntoVentaPage() {
   const handleCodigoDetectado = (code: string) => {
     setCodigoBarras(code)
     setEscanerActivo(false)
-    handleBuscarProducto()
+    handleBuscarProductoCodigo(code)
   }
 
   const toggleEscaner = () => {
     setEscanerActivo(!escanerActivo)
+  }
+
+  const handleBuscarProductoCodigo = async (codigo: string) => {
+    if (!codigo) return
+    setCodigoBarras(codigo)
+    setCargando(true)
+    setError(null)
+
+    try {
+      const { data: productos, error: errorProducto } = await supabase
+        .from("productos")
+        .select(`*, inventario(cantidad)`)
+        .eq("codigo_barras", codigo)
+        .eq("activo", true)
+        .limit(1)
+
+      if (errorProducto) throw errorProducto
+
+      if (!productos || productos.length === 0) {
+        setError(`No se encontró ningún producto con el código ${codigo}`)
+        setCargando(false)
+        return
+      }
+
+      const producto = productos[0]
+      const stockDisponible =
+        producto.inventario && producto.inventario.length > 0 ? producto.inventario[0].cantidad : 0
+
+      if (stockDisponible <= 0) {
+        setError(`El producto ${producto.nombre} no tiene stock disponible`)
+        setCargando(false)
+        return
+      }
+
+      const productoExistente = carrito.find((p) => p.id === producto.id)
+
+      if (productoExistente) {
+        if (productoExistente.cantidad >= stockDisponible) {
+          setError(`No hay suficiente stock disponible de ${producto.nombre}`)
+          setCargando(false)
+          return
+        }
+        const nuevoCarrito = carrito.map((p) =>
+          p.id === producto.id
+            ? { ...p, cantidad: p.cantidad + 1, subtotal: (p.cantidad + 1) * p.precio }
+            : p
+        )
+        setCarrito(nuevoCarrito)
+        calcularTotales(nuevoCarrito)
+      } else {
+        const nuevoProducto: ProductoCarrito = {
+          id: producto.id,
+          codigo: producto.codigo_barras,
+          nombre: producto.nombre,
+          precio: producto.precio_venta,
+          cantidad: 1,
+          subtotal: producto.precio_venta,
+          stock_disponible: stockDisponible,
+        }
+        const nuevoCarrito = [...carrito, nuevoProducto]
+        setCarrito(nuevoCarrito)
+        calcularTotales(nuevoCarrito)
+      }
+      setCodigoBarras("")
+    } catch (err: any) {
+      console.error("Error al buscar producto:", err)
+      setError("Error al buscar el producto. Inténtalo de nuevo.")
+    } finally {
+      setCargando(false)
+    }
   }
 
   const cerrarComprobante = () => {
@@ -344,153 +414,147 @@ export default function PuntoVentaPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 space-y-6">
-      <div className="flex flex-col md:flex-row gap-4">
-        <Card className="flex-1">
-          <CardHeader>
-            <CardTitle>Punto de Venta</CardTitle>
-            <CardDescription>Escanea o ingresa el código de barras del producto</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
+    <div className="flex h-screen flex-col overflow-hidden">
+      {/* **** RENDERIZAR EL SCANNER AQUÍ, EN EL NIVEL SUPERIOR **** */}
+      {escanerActivo && (
+        <BarcodeScanner
+          onDetected={handleCodigoDetectado}
+          onClose={toggleEscaner} 
+        />
+      )}
+
+      {/* El resto de la UI se oculta si el scanner está activo para evitar solapamientos */}
+      <div className={`flex flex-1 flex-col ${escanerActivo ? 'hidden' : ''}`}>
+        {/* Header (si tienes uno separado) */}
+        {/* <Header /> */}
+        
+        {/* Contenido Principal del Punto de Venta */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+          {/* Sección de Búsqueda y Botón de Escáner */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Punto de Venta</CardTitle>
+              <CardDescription>Escanea o ingresa el código de barras del producto</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col md:flex-row gap-4">
                 <Input
                   type="text"
                   placeholder="Código de barras"
                   value={codigoBarras}
                   onChange={handleCodigoBarrasChange}
-                  onKeyPress={(e) => e.key === "Enter" && handleBuscarProducto()}
+                  onKeyPress={(e) => e.key === "Enter" && handleBuscarProductoCodigo(codigoBarras)}
                 />
+                <Button onClick={() => handleBuscarProductoCodigo(codigoBarras)} disabled={cargando || !codigoBarras}>
+                  <Barcode className="mr-2 h-4 w-4" /> Buscar
+                </Button>
+                {/* ESTE BOTÓN CONTROLA EL ESTADO 'escanerActivo' */}
+                <Button onClick={toggleEscaner}>
+                  <Camera className="mr-2 h-4 w-4" /> Iniciar Escáner
+                </Button>
               </div>
-              <Button onClick={handleBuscarProducto} disabled={cargando}>
-                <Barcode className="mr-2 h-4 w-4" />
-                Buscar
-              </Button>
-              <Button onClick={toggleEscaner}>
-                <Camera className="mr-2 h-4 w-4" />
-                Iniciar Escáner
-              </Button>
-            </div>
-            {error && (
-              <Alert variant="destructive" className="mt-4">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Diálogo del Escáner */}
-      <Dialog open={escanerActivo} onOpenChange={setEscanerActivo}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Escáner de Código de Barras</DialogTitle>
-            <DialogDescription>
-              Apunta la cámara hacia el código de barras del producto
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4" ref={videoRef}>
-            <BarcodeScanner 
-              onDetected={handleCodigoDetectado} 
-              onClose={toggleEscaner} 
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Productos ({carrito.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {carrito.map((producto) => (
-                <Card key={producto.id} className="p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <h3 className="font-medium">{producto.nombre}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Código: {producto.codigo}
-                      </p>
-                      <p className="text-sm font-medium">
-                        ${producto.precio.toFixed(2)} c/u
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEliminarProducto(producto.id)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex items-center justify-between mt-4">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleCambiarCantidad(producto.id, -1)}
-                        className="h-8 w-8 p-0"
-                      >
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <span className="font-medium">{producto.cantidad}</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleCambiarCantidad(producto.id, 1)}
-                        className="h-8 w-8 p-0"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-muted-foreground">Subtotal</p>
-                      <p className="font-medium">${producto.subtotal.toFixed(2)}</p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-              {carrito.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  No hay productos en el carrito
-                </div>
+              {error && (
+                <Alert variant="destructive" className="mt-4">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
               )}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Resumen</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span>${subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold">
-                <span>Total:</span>
-                <span>${total.toFixed(2)}</span>
-              </div>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button
-              className="w-full"
-              onClick={handleFinalizarVenta}
-              disabled={carrito.length === 0}
-            >
-              Finalizar Venta
-            </Button>
-          </CardFooter>
-        </Card>
+          {/* Sección de Productos y Resumen */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Columna de Productos */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Productos ({carrito.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {carrito.map((producto) => (
+                    <Card key={producto.id} className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <h3 className="font-medium">{producto.nombre}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Código: {producto.codigo}
+                          </p>
+                          <p className="text-sm font-medium">
+                            ${producto.precio.toFixed(2)} c/u
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEliminarProducto(producto.id)}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-between mt-4">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCambiarCantidad(producto.id, -1)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <span className="font-medium">{producto.cantidad}</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCambiarCantidad(producto.id, 1)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">Subtotal</p>
+                          <p className="font-medium">${producto.subtotal.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                  {carrito.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No hay productos en el carrito
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Columna de Resumen */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Resumen</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between">
+                    <span>Subtotal:</span>
+                    <span>${subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold">
+                    <span>Total:</span>
+                    <span>${total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button className="w-full" onClick={handleFinalizarVenta} disabled={carrito.length === 0 || cargando}>
+                  Finalizar Venta
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        </main>
       </div>
 
-      {/* Diálogo de finalización de venta */}
+      {/* Diálogos (Finalizar Venta, Comprobante) van aquí, separados del scanner */}
       <Dialog open={dialogoFinalizarAbierto} onOpenChange={setDialogoFinalizarAbierto}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -528,8 +592,6 @@ export default function PuntoVentaPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Diálogo de comprobante */}
       <Dialog open={ventaExitosa} onOpenChange={setVentaExitosa}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

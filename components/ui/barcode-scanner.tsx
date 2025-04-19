@@ -4,7 +4,6 @@ import * as React from "react"
 import Quagga from "@ericblade/quagga2"
 import { Button } from "./button"
 import { X } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
 
 interface BarcodeScannerProps {
   onDetected: (code: string) => void
@@ -13,168 +12,143 @@ interface BarcodeScannerProps {
 
 export function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
   const videoRef = React.useRef<HTMLDivElement>(null)
-  const { toast } = useToast()
-  const [isRequesting, setIsRequesting] = React.useState(false)
   const [isInitialized, setIsInitialized] = React.useState(false)
-  const [isMounted, setIsMounted] = React.useState(false)
+  const isMountedRef = React.useRef(false)
+
+  // Cleanup function ref
+  const cleanupQuagga = React.useCallback(() => {
+    if (isInitialized) {
+      try {
+        Quagga.stop()
+        setIsInitialized(false)
+        console.log("Quagga stopped.")
+      } catch (e) {
+        console.error("Error stopping Quagga:", e)
+      }
+    }
+  }, [isInitialized])
 
   React.useEffect(() => {
-    setIsMounted(true)
-    return () => setIsMounted(false)
-  }, [])
+    isMountedRef.current = true
+    document.body.style.overflow = 'hidden' // Prevent body scroll
 
-  const initializeCamera = React.useCallback(async () => {
-    if (!isMounted || !videoRef.current) return
-
-    try {
-      setIsRequesting(true)
-
-      // Primero verificamos si tenemos acceso a la cámara
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          } 
-        })
-        // Liberamos el stream después de la prueba
-        stream.getTracks().forEach(track => track.stop())
-      } catch (err) {
-        console.error("Error accessing camera:", err)
-        toast({
-          title: "Error de Permisos",
-          description: "Por favor, permite el acceso a la cámara para usar el escáner.",
-          variant: "destructive",
-        })
-        onClose()
+    const init = async () => {
+      if (!videoRef.current || !isMountedRef.current) {
+        console.log("Initialization skipped: Not mounted or videoRef missing")
         return
       }
 
-      const config = {
-        inputStream: {
-          name: "Live",
-          type: "LiveStream",
-          target: videoRef.current,
-          constraints: {
-            facingMode: "environment",
-            width: { min: 640, ideal: 1280, max: 1920 },
-            height: { min: 480, ideal: 720, max: 1080 },
+      try {
+        console.log("Attempting to initialize Quagga...")
+        await Quagga.init({
+          inputStream: {
+            name: "Live",
+            type: "LiveStream",
+            target: videoRef.current, // Target the div
+            constraints: {
+              facingMode: "environment"
+            },
+            // Definir área de escaneo (70% ancho central, ~30-40% alto central)
+            area: {
+              top: "30%",     // Margen superior para centrar verticalmente
+              right: "15%",   // Margen derecho (100 - 70) / 2
+              left: "15%",    // Margen izquierdo
+              bottom: "30%"  // Margen inferior
+            }
           },
-          area: {
-            // Definimos el área de escaneo como el 50% central de la pantalla
-            top: "25%",
-            right: "25%",
-            left: "25%",
-            bottom: "25%",
+          locate: true,
+          numOfWorkers: navigator.hardwareConcurrency || 4, // Use available cores or default to 4
+          decoder: {
+            readers: ["ean_reader"], // Only EAN for barcodes
+            multiple: false, // Detect only one barcode at a time
           },
-        },
-        locator: {
-          patchSize: "medium",
-          halfSample: true,
-        },
-        numOfWorkers: 0,
-        decoder: {
-          readers: ["ean_reader"],
-          multiple: false,
-        },
-        locate: true,
-      }
-
-      await Quagga.init(config)
-      console.log("Quagga initialized successfully")
-      
-      setIsRequesting(false)
-      setIsInitialized(true)
-      
-      await Quagga.start()
-      console.log("Quagga started successfully")
-
-      Quagga.onDetected((result) => {
-        const code = result.codeResult.code
-        if (code && code.length === 13) {
-          if (isInitialized) {
-            Quagga.stop()
-            setIsInitialized(false)
+          locator: {
+              patchSize: "medium",
+              halfSample: true
           }
-          onDetected(code)
-          onClose()
+        })
+
+        // Style the injected video element for fullscreen
+        const videoElement = videoRef.current?.querySelector('video')
+        if (videoElement) {
+          videoElement.style.position = 'absolute'
+          videoElement.style.top = '0'
+          videoElement.style.left = '0'
+          videoElement.style.width = '100vw'
+          videoElement.style.height = '100vh'
+          videoElement.style.objectFit = 'cover'
+          videoElement.style.zIndex = '-1' // Place behind overlays
         }
-      })
 
-    } catch (error) {
-      console.error("Error in scanner initialization:", error)
-      setIsRequesting(false)
-      toast({
-        title: "Error",
-        description: "No se pudo iniciar el escáner. Por favor, intenta de nuevo.",
-        variant: "destructive",
-      })
-      onClose()
-    }
-  }, [onDetected, onClose, toast, isInitialized, isMounted])
+        Quagga.onDetected((result) => {
+          const code = result.codeResult.code
+          // Basic validation
+          if (code && code.length === 13) {
+            console.log("Barcode detected:", code)
+            onDetected(code)
+            cleanupQuagga() // Stop scanner after detection
+            onClose() // Close the scanner UI
+          }
+        })
 
-  React.useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      initializeCamera()
-    }, 1000) // Damos tiempo para que el DOM se monte completamente
+        Quagga.onProcessed((result) => {
+            // Optional: Add visualization logic here if needed later
+            // Example: Draw boxes around potential codes
+        });
 
-    return () => {
-      clearTimeout(timeoutId)
-      if (isInitialized) {
-        Quagga.stop()
-        setIsInitialized(false)
+        console.log("Attempting to start Quagga...")
+        await Quagga.start()
+        setIsInitialized(true)
+        console.log("Quagga started successfully.")
+
+      } catch (err) {
+        console.error("Error initializing Quagga:", err)
+        onClose() // Close scanner on error
       }
     }
-  }, [initializeCamera, isInitialized])
 
-  if (!isMounted) {
-    return null
-  }
+    // Delay initialization slightly to ensure DOM is ready
+    const timeoutId = setTimeout(init, 100)
+
+    // Cleanup on component unmount
+    return () => {
+      isMountedRef.current = false
+      clearTimeout(timeoutId)
+      document.body.style.overflow = 'unset' // Restore body scroll
+      cleanupQuagga()
+    }
+  }, [onDetected, onClose, cleanupQuagga]) // Dependencies
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <div className="relative w-full max-w-3xl">
-          <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
-            <div 
-              ref={videoRef} 
-              className="absolute inset-0 bg-black rounded-lg overflow-hidden"
-            />
-            
-            {/* Cuadro guía para el código de barras */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-1/2 h-1/2 border-2 border-primary rounded-lg">
-                <div className="absolute inset-0 border-t-2 border-primary transform -translate-y-1/2"></div>
-                <div className="absolute inset-0 border-l-2 border-primary transform -translate-x-1/2"></div>
-                <div className="absolute inset-0 border-b-2 border-primary transform translate-y-1/2"></div>
-                <div className="absolute inset-0 border-r-2 border-primary transform translate-x-1/2"></div>
-              </div>
-            </div>
-
-            <Button
-              variant="destructive"
-              size="sm"
-              className="absolute top-4 right-4 z-10"
-              onClick={() => {
-                if (isInitialized) {
-                  Quagga.stop()
-                  setIsInitialized(false)
-                }
-                onClose()
-              }}
-            >
-              <X className="h-4 w-4 mr-1" /> Cerrar
-            </Button>
-          </div>
-          <p className="text-sm text-center mt-4 text-muted-foreground">
-            {isRequesting 
-              ? "Solicitando acceso a la cámara..."
-              : "Coloca el código de barras dentro del cuadro"
-            }
-          </p>
-        </div>
+    <div className="fixed inset-0 z-[100] bg-black"> {/* High z-index, full cover */}
+      {/* This div is the target for Quagga's video stream */}
+      <div 
+        ref={videoRef}
+        className="absolute inset-0 w-full h-full"
+      />
+      
+      {/* Overlay con el rectángulo guía 16:9 centrado */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[101]">
+        <div 
+          className="border-2 border-primary rounded-lg"
+          style={{
+            width: '70vw',                   // 70% del ancho de la ventana
+            height: 'calc(70vw * 9 / 16)',   // Calcular altura para mantener 16:9
+            maxWidth: '600px',              // Ancho máximo opcional
+            maxHeight: 'calc(600px * 9 / 16)' // Altura máxima correspondiente (aprox. 337.5px)
+          }}
+        />
       </div>
+
+      {/* Simple Close Button Overlay */}
+      <Button
+        variant="destructive"
+        size="sm"
+        className="absolute top-4 right-4 z-[102]" // Asegurar que esté por encima del overlay guía
+        onClick={onClose} // Directly call onClose passed from parent
+      >
+        <X className="h-4 w-4 mr-1" /> Cerrar
+      </Button>
     </div>
   )
 } 
