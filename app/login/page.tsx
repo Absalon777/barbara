@@ -162,11 +162,6 @@ export default function LoginPage() {
           <p className="text-sm sm:text-base text-muted-foreground text-center">
             Sistema de Gestión de Ventas e Inventario
           </p>
-          <div className="text-xs sm:text-sm text-muted-foreground text-center">
-            <p>Credenciales de prueba:</p>
-            <p>Admin: 21.003.588-5 / Admin123</p>
-            <p>Vendedor: 22.222.222-2 / Vendedor123456</p>
-          </div>
         </CardFooter>
       </Card>
     </div>
