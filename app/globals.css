@@ -54,6 +54,47 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-x-hidden;
+  }
+}
+
+@layer components {
+  .container-responsive {
+    @apply w-full px-4 mx-auto;
+    @apply sm:max-w-[640px] sm:px-6;
+    @apply md:max-w-[768px] md:px-8;
+    @apply lg:max-w-[1024px] lg:px-10;
+    @apply xl:max-w-[1280px] xl:px-12;
+  }
+  
+  .card-responsive {
+    @apply w-full p-4;
+    @apply sm:p-6;
+    @apply md:p-8;
+  }
+  
+  .text-responsive {
+    @apply text-sm;
+    @apply sm:text-base;
+    @apply md:text-lg;
+  }
+  
+  .heading-responsive {
+    @apply text-xl;
+    @apply sm:text-2xl;
+    @apply md:text-3xl;
+    @apply lg:text-4xl;
+  }
+
+  .page-container {
+    @apply w-full min-h-screen overflow-x-hidden;
+  }
+
+  .content-wrapper {
+    @apply w-full max-w-full overflow-x-hidden;
+  }
+
+  .table-responsive {
+    @apply w-full overflow-x-auto;
   }
 }

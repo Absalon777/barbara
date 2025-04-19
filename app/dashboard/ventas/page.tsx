@@ -23,6 +23,7 @@ import { Barcode, Camera, Minus, Plus, ShoppingCart, Trash2, X, Save, Receipt } 
 import { getSupabaseBrowserClient } from "@/lib/supabase-auth"
 import { useToast } from "@/hooks/use-toast"
 import { useMobile } from "@/hooks/use-mobile"
+import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 
 // Importar la biblioteca para escaneo de códigos de barras
 import Quagga from "quagga"
@@ -330,215 +331,86 @@ export default function PuntoVentaPage() {
     }
   }
 
-  const iniciarEscaner = () => {
-    if (!videoRef.current) return
+  const handleCodigoDetectado = (code: string) => {
+    setCodigoBarras(code)
+    // Buscar y agregar el producto inmediatamente
+    const buscarYAgregarProducto = async () => {
+      setCargando(true)
+      setError(null)
 
-    setEscanerActivo(true)
-    setError(null)
+      try {
+        // Buscar el producto en la base de datos
+        const { data: productos, error: errorProducto } = await supabase
+          .from("productos")
+          .select(`
+            *,
+            inventario(cantidad)
+          `)
+          .eq("codigo_barras", code)
+          .eq("activo", true)
+          .limit(1)
 
-    Quagga.init(
-      {
-        inputStream: {
-          name: "Live",
-          type: "LiveStream",
-          target: videoRef.current,
-          constraints: {
-            facingMode: "environment", // Usar cámara trasera en móviles
-            width: { min: 450 },
-            height: { min: 300 },
-            aspectRatio: { min: 1, max: 2 },
-          },
-        },
-        locator: {
-          patchSize: "medium",
-          halfSample: true,
-        },
-        numOfWorkers: 4,
-        frequency: 10,
-        decoder: {
-          readers: [
-            "ean_reader",
-            "ean_8_reader",
-            "code_128_reader",
-            "code_39_reader",
-            "code_39_vin_reader",
-            "upc_reader",
-            "upc_e_reader",
-          ],
-          debug: {
-            showCanvas: true,
-            showPatches: true,
-            showFoundPatches: true,
-            showSkeleton: true,
-            showLabels: true,
-            showPatchLabels: true,
-            showRemainingPatchLabels: true,
-          },
-        },
-        locate: true,
-      },
-      (err) => {
-        if (err) {
-          console.error("Error al iniciar el escáner:", err)
-          toast({
-            title: "Error",
-            description: "No se pudo iniciar la cámara. Verifica los permisos.",
-            variant: "destructive",
-          })
-          setEscanerActivo(false)
+        if (errorProducto) throw errorProducto
+
+        if (!productos || productos.length === 0) {
+          setError(`No se encontró ningún producto con el código ${code}`)
+          setCargando(false)
           return
         }
 
-        console.log("Escáner iniciado correctamente")
-        Quagga.start()
+        const producto = productos[0]
+        const stockDisponible =
+          producto.inventario && producto.inventario.length > 0 ? producto.inventario[0].cantidad : 0
 
-        // Mejorar la detección de códigos de barras
-        Quagga.onDetected((result) => {
-          const code = result.codeResult.code
-          if (code) {
-            console.log("Código detectado:", code)
-            setCodigoBarras(code)
-            detenerEscaner()
+        if (stockDisponible <= 0) {
+          setError(`El producto ${producto.nombre} no tiene stock disponible`)
+          setCargando(false)
+          return
+        }
 
-            // Buscar y agregar el producto inmediatamente
-            const buscarYAgregarProducto = async () => {
-              setCargando(true)
-              setError(null)
+        // Verificar si el producto ya está en el carrito
+        const productoExistente = carrito.find((p) => p.id === producto.id)
 
-              try {
-                // Buscar el producto en la base de datos
-                const { data: productos, error: errorProducto } = await supabase
-                  .from("productos")
-                  .select(`
-                    *,
-                    inventario(cantidad)
-                  `)
-                  .eq("codigo_barras", code)
-                  .eq("activo", true)
-                  .limit(1)
-
-                if (errorProducto) throw errorProducto
-
-                if (!productos || productos.length === 0) {
-                  setError(`No se encontró ningún producto con el código ${code}`)
-                  setCargando(false)
-                  return
-                }
-
-                const producto = productos[0]
-                const stockDisponible =
-                  producto.inventario && producto.inventario.length > 0 ? producto.inventario[0].cantidad : 0
-
-                if (stockDisponible <= 0) {
-                  setError(`El producto ${producto.nombre} no tiene stock disponible`)
-                  setCargando(false)
-                  return
-                }
-
-                // Verificar si el producto ya está en el carrito
-                const productoExistente = carrito.find((p) => p.id === producto.id)
-
-                if (productoExistente) {
-                  // Si ya existe, verificar si hay suficiente stock
-                  if (productoExistente.cantidad >= stockDisponible) {
-                    setError(`No hay suficiente stock disponible de ${producto.nombre}`)
-                    setCargando(false)
-                    return
+        if (productoExistente) {
+          // Si ya está en el carrito, incrementar la cantidad
+          setCarrito(
+            carrito.map((p) =>
+              p.id === producto.id
+                ? {
+                    ...p,
+                    cantidad: p.cantidad + 1,
+                    subtotal: (p.cantidad + 1) * p.precio,
                   }
+                : p
+            )
+          )
+        } else {
+          // Si no está en el carrito, agregarlo
+          setCarrito([
+            ...carrito,
+            {
+              id: producto.id,
+              codigo: producto.codigo_barras,
+              nombre: producto.nombre,
+              precio: producto.precio_venta,
+              cantidad: 1,
+              subtotal: producto.precio_venta,
+              stock_disponible: stockDisponible,
+            },
+          ])
+        }
 
-                  // Si hay stock, aumentamos la cantidad
-                  const nuevoCarrito = carrito.map((p) =>
-                    p.id === producto.id
-                      ? {
-                          ...p,
-                          cantidad: p.cantidad + 1,
-                          subtotal: (p.cantidad + 1) * p.precio,
-                        }
-                      : p,
-                  )
-                  setCarrito(nuevoCarrito)
-                  calcularTotales(nuevoCarrito)
-
-                  toast({
-                    title: "Producto agregado",
-                    description: `Se agregó una unidad más de ${producto.nombre}`,
-                  })
-                } else {
-                  // Si no existe, lo agregamos al carrito
-                  const nuevoProducto: ProductoCarrito = {
-                    id: producto.id,
-                    codigo: producto.codigo_barras,
-                    nombre: producto.nombre,
-                    precio: producto.precio_venta,
-                    cantidad: 1,
-                    subtotal: producto.precio_venta,
-                    stock_disponible: stockDisponible,
-                  }
-                  const nuevoCarrito = [...carrito, nuevoProducto]
-                  setCarrito(nuevoCarrito)
-                  calcularTotales(nuevoCarrito)
-
-                  toast({
-                    title: "Producto agregado",
-                    description: `Se agregó ${producto.nombre} al carrito`,
-                  })
-                }
-              } catch (err: any) {
-                console.error("Error al buscar producto:", err)
-                setError("Error al buscar el producto. Inténtalo de nuevo.")
-              } finally {
-                setCargando(false)
-              }
-            }
-
-            buscarYAgregarProducto()
-          }
-        })
-
-        // Agregar manejo de errores durante el escaneo
-        Quagga.onProcessed((result) => {
-          const drawingCtx = Quagga.canvas.ctx.overlay
-          const drawingCanvas = Quagga.canvas.dom.overlay
-
-          if (result) {
-            if (result.boxes) {
-              drawingCtx.clearRect(
-                0,
-                0,
-                Number.parseInt(drawingCanvas.getAttribute("width")),
-                Number.parseInt(drawingCanvas.getAttribute("height")),
-              )
-              result.boxes
-                .filter((box) => box !== result.box)
-                .forEach((box) => {
-                  Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, {
-                    color: "green",
-                    lineWidth: 2,
-                  })
-                })
-            }
-
-            if (result.box) {
-              Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, {
-                color: "#00F",
-                lineWidth: 2,
-              })
-            }
-
-            if (result.codeResult && result.codeResult.code) {
-              Quagga.ImageDebug.drawPath(result.line, { x: "x", y: "y" }, drawingCtx, { color: "red", lineWidth: 3 })
-            }
-          }
-        })
-      },
-    )
-  }
-
-  const detenerEscaner = () => {
-    if (escanerActivo) {
-      Quagga.stop()
-      setEscanerActivo(false)
+        setError(null)
+        setCodigoBarras("")
+      } catch (err: any) {
+        console.error("Error al buscar producto:", err)
+        setError("Error al buscar el producto. Inténtalo de nuevo.")
+      } finally {
+        setCargando(false)
+      }
     }
+
+    buscarYAgregarProducto()
   }
 
   const cerrarComprobante = () => {
@@ -547,318 +419,213 @@ export default function PuntoVentaPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-3xl font-bold tracking-tight">Punto de Venta</h1>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="md:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Carrito de Compra</CardTitle>
-              <CardDescription>Productos agregados a la venta actual</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-2 mb-4">
-                <div className="relative w-full">
-                  <Input
-                    placeholder="Escanea o ingresa el código de barras"
-                    value={codigoBarras}
-                    onChange={handleCodigoBarrasChange}
-                    className="pr-10"
-                  />
-                  {codigoBarras && (
+    <div className="page-container">
+      <div className="content-wrapper">
+        <div className="container-responsive">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Sección de búsqueda y escaneo */}
+            <Card className="card-responsive">
+              <CardHeader>
+                <CardTitle className="heading-responsive">Agregar Productos</CardTitle>
+                <CardDescription className="text-responsive">
+                  Escanea o ingresa el código de barras del producto
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      placeholder="Código de barras"
+                      value={codigoBarras}
+                      onChange={handleCodigoBarrasChange}
+                      className="text-responsive"
+                    />
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-full"
-                      onClick={() => setCodigoBarras("")}
+                      onClick={handleBuscarProducto}
+                      disabled={cargando}
+                      className="text-responsive"
                     >
-                      <X className="h-4 w-4" />
+                      <Barcode className="mr-2 h-4 w-4" />
+                      Buscar
+                    </Button>
+                  </div>
+                  {isMobile && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setEscanerActivo(!escanerActivo)}
+                      className="w-full text-responsive"
+                    >
+                      <Camera className="mr-2 h-4 w-4" />
+                      {escanerActivo ? "Detener Escáner" : "Iniciar Escáner"}
                     </Button>
                   )}
                 </div>
-                <div className="flex space-x-2">
-                  <Button onClick={handleBuscarProducto} disabled={cargando || !codigoBarras}>
-                    <Barcode className="mr-2 h-4 w-4" />
-                    Buscar
-                  </Button>
-                  <Button variant="outline" onClick={iniciarEscaner} disabled={escanerActivo}>
-                    <Camera className="mr-2 h-4 w-4" />
-                    Escanear
-                  </Button>
-                </div>
-              </div>
-
-              {escanerActivo && (
-                <div className="mb-4">
-                  <div className="relative">
-                    <div ref={videoRef} className="w-full h-64 bg-black rounded-md overflow-hidden"></div>
-                    <Button variant="destructive" size="sm" className="absolute top-2 right-2" onClick={detenerEscaner}>
-                      <X className="h-4 w-4 mr-1" /> Cerrar
-                    </Button>
+                {escanerActivo && (
+                  <div className="mt-4" ref={videoRef}>
+                    <BarcodeScanner onDetected={handleCodigoDetectado} onClose={() => setEscanerActivo(false)} />
                   </div>
-                  <p className="text-sm text-center mt-2 text-muted-foreground">
-                    Apunta la cámara al código de barras del producto
-                  </p>
-                </div>
-              )}
+                )}
+                {error && (
+                  <Alert variant="destructive" className="mt-4 text-responsive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
 
-              {error && (
-                <Alert variant="destructive" className="mb-4">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="border rounded-md">
-                <div className="overflow-x-auto">
+            {/* Sección del carrito */}
+            <Card className="card-responsive">
+              <CardHeader>
+                <CardTitle className="heading-responsive">Carrito de Compras</CardTitle>
+                <CardDescription className="text-responsive">
+                  {carrito.length} productos en el carrito
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="table-responsive">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Producto</TableHead>
-                        <TableHead className="text-right">Precio</TableHead>
-                        <TableHead className="text-center">Cantidad</TableHead>
-                        <TableHead className="text-right">Subtotal</TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
+                        <TableHead className="text-responsive">Producto</TableHead>
+                        <TableHead className="text-responsive">Cantidad</TableHead>
+                        <TableHead className="text-responsive">Precio</TableHead>
+                        <TableHead className="text-responsive">Subtotal</TableHead>
+                        <TableHead className="text-responsive">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {carrito.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                            No hay productos en el carrito
+                      {carrito.map((producto) => (
+                        <TableRow key={producto.id}>
+                          <TableCell className="text-responsive">{producto.nombre}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handleCambiarCantidad(producto.id, -1)}
+                                className="h-8 w-8"
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <span className="text-responsive">{producto.cantidad}</span>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handleCambiarCantidad(producto.id, 1)}
+                                className="h-8 w-8"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-responsive">
+                            ${producto.precio.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-responsive">
+                            ${producto.subtotal.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEliminarProducto(producto.id)}
+                              className="h-8 w-8"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </TableCell>
                         </TableRow>
-                      ) : (
-                        carrito.map((producto) => (
-                          <TableRow key={producto.id}>
-                            <TableCell>
-                              <div>
-                                <div className="font-medium">{producto.nombre}</div>
-                                <div className="text-sm text-muted-foreground">{producto.codigo}</div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">${producto.precio.toLocaleString()}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center justify-center space-x-2">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => handleCambiarCantidad(producto.id, -1)}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                                <span className="w-8 text-center">{producto.cantidad}</span>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => handleCambiarCantidad(producto.id, 1)}
-                                  disabled={producto.cantidad >= producto.stock_disponible}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">${producto.subtotal.toLocaleString()}</TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleEliminarProducto(producto.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
+                      ))}
                     </TableBody>
                   </Table>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Resumen de Venta</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal:</span>
-                <span>${subtotal.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">IVA (19%):</span>
-                <span>${impuestos.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between font-bold text-lg">
-                <span>Total:</span>
-                <span>${total.toLocaleString()}</span>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button
-                className="w-full"
-                size="lg"
-                disabled={carrito.length === 0 || cargando}
-                onClick={handleFinalizarVenta}
-              >
-                <ShoppingCart className="mr-2 h-5 w-5" />
-                Finalizar Venta
-              </Button>
-            </CardFooter>
-          </Card>
+              </CardContent>
+              <CardFooter className="flex flex-col space-y-4">
+                <div className="w-full space-y-2">
+                  <div className="flex justify-between text-responsive">
+                    <span>Subtotal:</span>
+                    <span>${subtotal.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-responsive">
+                    <span>IVA (19%):</span>
+                    <span>${impuestos.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-responsive">
+                    <span>Total:</span>
+                    <span>${total.toLocaleString()}</span>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleFinalizarVenta}
+                  disabled={carrito.length === 0}
+                  className="w-full text-responsive"
+                >
+                  <ShoppingCart className="mr-2 h-4 w-4" />
+                  Finalizar Venta
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
         </div>
       </div>
 
-      {/* Diálogo para finalizar venta */}
+      {/* Diálogo de finalización de venta */}
       <Dialog open={dialogoFinalizarAbierto} onOpenChange={setDialogoFinalizarAbierto}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Finalizar Venta</DialogTitle>
-            <DialogDescription>Confirma los detalles de la venta para procesarla</DialogDescription>
+            <DialogTitle className="heading-responsive">Finalizar Venta</DialogTitle>
+            <DialogDescription className="text-responsive">
+              Selecciona el método de pago y confirma la venta
+            </DialogDescription>
           </DialogHeader>
-
-          <div className="grid gap-4 py-4">
+          <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="metodo_pago">Método de Pago</Label>
+              <Label className="text-responsive">Método de Pago</Label>
               <Select value={metodoPago} onValueChange={setMetodoPago}>
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="text-responsive">
+                  <SelectValue placeholder="Selecciona un método de pago" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="efectivo">Efectivo</SelectItem>
-                  <SelectItem value="tarjeta">Tarjeta de Crédito/Débito</SelectItem>
-                  <SelectItem value="transferencia">Transferencia</SelectItem>
+                  <SelectItem value="efectivo" className="text-responsive">Efectivo</SelectItem>
+                  <SelectItem value="tarjeta" className="text-responsive">Tarjeta</SelectItem>
+                  <SelectItem value="transferencia" className="text-responsive">Transferencia</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="border rounded-md p-4 space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span>${subtotal.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>IVA (19%):</span>
-                <span>${impuestos.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between font-bold">
-                <span>Total a pagar:</span>
-                <span>${total.toLocaleString()}</span>
-              </div>
-            </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogoFinalizarAbierto(false)} disabled={cargando}>
+            <Button
+              variant="outline"
+              onClick={() => setDialogoFinalizarAbierto(false)}
+              className="text-responsive"
+            >
               Cancelar
             </Button>
-            <Button onClick={handleConfirmarVenta} disabled={cargando}>
-              {cargando ? (
-                <>
-                  <div className="animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                  Procesando...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Confirmar Venta
-                </>
-              )}
+            <Button onClick={handleConfirmarVenta} disabled={cargando} className="text-responsive">
+              {cargando ? "Procesando..." : "Confirmar Venta"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Diálogo de comprobante de venta */}
-      <Dialog open={ventaExitosa} onOpenChange={cerrarComprobante}>
-        <DialogContent className="sm:max-w-[500px]">
+      {/* Diálogo de comprobante */}
+      <Dialog open={ventaExitosa} onOpenChange={setVentaExitosa}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-center text-center">
-              <Receipt className="mr-2 h-5 w-5" />
-              Comprobante de Venta
-            </DialogTitle>
+            <DialogTitle className="heading-responsive">Venta Exitosa</DialogTitle>
+            <DialogDescription className="text-responsive">
+              La venta se ha completado correctamente
+            </DialogDescription>
           </DialogHeader>
-
-          {ultimaVenta && (
-            <div className="py-4 space-y-4">
-              <div className="text-center">
-                <h3 className="text-lg font-bold">Sistema de Gestión de Ventas</h3>
-                <p className="text-sm text-muted-foreground">
-                  {new Date(ultimaVenta.fecha).toLocaleDateString("es-CL", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
-                <p className="text-sm">Venta #{ultimaVenta.id.substring(0, 8)}</p>
-                <p className="text-sm">Vendedor: {ultimaVenta.vendedor}</p>
-              </div>
-
-              <div className="border-t border-b py-2">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-right">Precio</TableHead>
-                      <TableHead className="text-center">Cant</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {ultimaVenta.productos.map((producto: any) => (
-                      <TableRow key={producto.id}>
-                        <TableCell className="py-1">{producto.nombre}</TableCell>
-                        <TableCell className="text-right py-1">${producto.precio.toLocaleString()}</TableCell>
-                        <TableCell className="text-center py-1">{producto.cantidad}</TableCell>
-                        <TableCell className="text-right py-1">${producto.subtotal.toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>${ultimaVenta.subtotal.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>IVA (19%):</span>
-                  <span>${ultimaVenta.impuestos.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total:</span>
-                  <span>${ultimaVenta.total.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Método de pago:</span>
-                  <span>
-                    {ultimaVenta.metodoPago === "efectivo"
-                      ? "Efectivo"
-                      : ultimaVenta.metodoPago === "tarjeta"
-                        ? "Tarjeta"
-                        : "Transferencia"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="text-center text-sm text-muted-foreground pt-2 border-t">
-                <p>¡Gracias por su compra!</p>
-              </div>
+          <div className="space-y-4">
+            <div className="text-center">
+              <Receipt className="h-12 w-12 text-primary mx-auto mb-4" />
+              <p className="text-responsive">Número de Venta: {ultimaVenta?.id}</p>
+              <p className="text-responsive">Total: ${ultimaVenta?.total.toLocaleString()}</p>
             </div>
-          )}
-
+          </div>
           <DialogFooter>
-            <Button onClick={cerrarComprobante} className="w-full">
+            <Button onClick={cerrarComprobante} className="w-full text-responsive">
               Cerrar
             </Button>
           </DialogFooter>

@@ -23,6 +23,7 @@ import { Edit, Plus, Search, Camera, Barcode, Save, X } from "lucide-react"
 import { getSupabaseBrowserClient } from "@/lib/supabase-auth"
 import { useToast } from "@/hooks/use-toast"
 import { useMobile } from "@/hooks/use-mobile"
+import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 
 // Importar la biblioteca para escaneo de códigos de barras
 import Quagga from "quagga"
@@ -399,170 +400,55 @@ export default function InventarioPage() {
     }
   }
 
-  const iniciarEscaner = () => {
-    if (!videoRef.current) return
+  const handleCodigoDetectado = (code: string) => {
+    setBusqueda(code)
+    // Buscar el producto inmediatamente
+    const buscarProducto = async () => {
+      setCargando(true)
+      try {
+        // Buscar el producto en la base de datos
+        const { data: productos, error: errorProducto } = await supabase
+          .from("productos")
+          .select(`
+            *,
+            inventario(cantidad)
+          `)
+          .eq("codigo_barras", code)
+          .eq("activo", true)
+          .limit(1)
 
-    setEscanerActivo(true)
-    setError(null)
+        if (errorProducto) throw errorProducto
 
-    Quagga.init(
-      {
-        inputStream: {
-          name: "Live",
-          type: "LiveStream",
-          target: videoRef.current,
-          constraints: {
-            facingMode: "environment", // Usar cámara trasera en móviles
-            width: { min: 450 },
-            height: { min: 300 },
-            aspectRatio: { min: 1, max: 2 },
-          },
-        },
-        locator: {
-          patchSize: "medium",
-          halfSample: true,
-        },
-        numOfWorkers: 4,
-        frequency: 10,
-        decoder: {
-          readers: [
-            "ean_reader",
-            "ean_8_reader",
-            "code_128_reader",
-            "code_39_reader",
-            "code_39_vin_reader",
-            "upc_reader",
-            "upc_e_reader",
-          ],
-          debug: {
-            showCanvas: true,
-            showPatches: true,
-            showFoundPatches: true,
-            showSkeleton: true,
-            showLabels: true,
-            showPatchLabels: true,
-            showRemainingPatchLabels: true,
-          },
-        },
-        locate: true,
-      },
-      (err) => {
-        if (err) {
-          console.error("Error al iniciar el escáner:", err)
-          toast({
-            title: "Error",
-            description: "No se pudo iniciar la cámara. Verifica los permisos.",
-            variant: "destructive",
-          })
-          setEscanerActivo(false)
+        if (!productos || productos.length === 0) {
+          setError(`No se encontró ningún producto con el código ${code}`)
+          setCargando(false)
           return
         }
 
-        console.log("Escáner iniciado correctamente")
-        Quagga.start()
+        // Producto encontrado, actualizar la lista filtrada
+        const productosFormateados = productos.map((producto) => ({
+          ...producto,
+          stock: producto.inventario && producto.inventario.length > 0 ? producto.inventario[0].cantidad : 0,
+          categoria_nombre: producto.categoria ? producto.categoria.nombre : "Sin categoría",
+          proveedor_nombre: producto.proveedor ? producto.proveedor.nombre : "Sin proveedor",
+        }))
 
-        // Mejorar la detección de códigos de barras
-        Quagga.onDetected((result) => {
-          const code = result.codeResult.code
-          if (code) {
-            console.log("Código detectado:", code)
-            setBusqueda(code)
-            detenerEscaner()
+        setProductos(productosFormateados)
+        setError(null)
 
-            // Buscar el producto inmediatamente
-            const buscarProducto = async () => {
-              setCargando(true)
-              try {
-                // Buscar el producto en la base de datos
-                const { data: productos, error: errorProducto } = await supabase
-                  .from("productos")
-                  .select(`
-                    *,
-                    inventario(cantidad)
-                  `)
-                  .eq("codigo_barras", code)
-                  .eq("activo", true)
-                  .limit(1)
-
-                if (errorProducto) throw errorProducto
-
-                if (!productos || productos.length === 0) {
-                  setError(`No se encontró ningún producto con el código ${code}`)
-                  setCargando(false)
-                  return
-                }
-
-                // Producto encontrado, actualizar la lista filtrada
-                const productosFormateados = productos.map((producto) => ({
-                  ...producto,
-                  stock: producto.inventario && producto.inventario.length > 0 ? producto.inventario[0].cantidad : 0,
-                  categoria_nombre: producto.categoria ? producto.categoria.nombre : "Sin categoría",
-                  proveedor_nombre: producto.proveedor ? producto.proveedor.nombre : "Sin proveedor",
-                }))
-
-                setProductos(productosFormateados)
-                setError(null)
-
-                toast({
-                  title: "Producto encontrado",
-                  description: `Se encontró el producto: ${productosFormateados[0].nombre}`,
-                })
-              } catch (err: any) {
-                console.error("Error al buscar producto:", err)
-                setError("Error al buscar el producto. Inténtalo de nuevo.")
-              } finally {
-                setCargando(false)
-              }
-            }
-
-            buscarProducto()
-          }
+        toast({
+          title: "Producto encontrado",
+          description: `Se encontró el producto: ${productosFormateados[0].nombre}`,
         })
-
-        // Agregar manejo de errores durante el escaneo
-        Quagga.onProcessed((result) => {
-          const drawingCtx = Quagga.canvas.ctx.overlay
-          const drawingCanvas = Quagga.canvas.dom.overlay
-
-          if (result) {
-            if (result.boxes) {
-              drawingCtx.clearRect(
-                0,
-                0,
-                Number.parseInt(drawingCanvas.getAttribute("width")),
-                Number.parseInt(drawingCanvas.getAttribute("height")),
-              )
-              result.boxes
-                .filter((box) => box !== result.box)
-                .forEach((box) => {
-                  Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, {
-                    color: "green",
-                    lineWidth: 2,
-                  })
-                })
-            }
-
-            if (result.box) {
-              Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, {
-                color: "#00F",
-                lineWidth: 2,
-              })
-            }
-
-            if (result.codeResult && result.codeResult.code) {
-              Quagga.ImageDebug.drawPath(result.line, { x: "x", y: "y" }, drawingCtx, { color: "red", lineWidth: 3 })
-            }
-          }
-        })
-      },
-    )
-  }
-
-  const detenerEscaner = () => {
-    if (escanerActivo) {
-      Quagga.stop()
-      setEscanerActivo(false)
+      } catch (err: any) {
+        console.error("Error al buscar producto:", err)
+        setError("Error al buscar el producto. Inténtalo de nuevo.")
+      } finally {
+        setCargando(false)
+      }
     }
+
+    buscarProducto()
   }
 
   return (
@@ -616,7 +502,7 @@ export default function InventarioPage() {
                     <Search className="mr-2 h-4 w-4" />
                     Buscar
                   </Button>
-                  <Button variant="outline" onClick={iniciarEscaner} disabled={escanerActivo}>
+                  <Button variant="outline" onClick={() => setEscanerActivo(true)} disabled={escanerActivo}>
                     <Camera className="mr-2 h-4 w-4" />
                     Escanear
                   </Button>
@@ -625,15 +511,10 @@ export default function InventarioPage() {
 
               {escanerActivo && (
                 <div className="mb-4">
-                  <div className="relative">
-                    <div ref={videoRef} className="w-full h-64 bg-black rounded-md overflow-hidden"></div>
-                    <Button variant="destructive" size="sm" className="absolute top-2 right-2" onClick={detenerEscaner}>
-                      <X className="h-4 w-4 mr-1" /> Cerrar
-                    </Button>
-                  </div>
-                  <p className="text-sm text-center mt-2 text-muted-foreground">
-                    Apunta la cámara al código de barras del producto
-                  </p>
+                  <BarcodeScanner
+                    onDetected={handleCodigoDetectado}
+                    onClose={() => setEscanerActivo(false)}
+                  />
                 </div>
               )}
 

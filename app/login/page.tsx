@@ -158,29 +158,32 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 sm:p-6 md:p-8">
+      <Card className="w-full max-w-md mx-auto">
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-4">
-            <ShieldCheck className="h-12 w-12 text-primary" />
+            <ShieldCheck className="h-10 w-10 sm:h-12 sm:w-12 text-primary" />
           </div>
-          <CardTitle className="text-2xl text-center">Iniciar Sesión</CardTitle>
-          <CardDescription className="text-center">Ingresa tu RUT y contraseña para acceder al sistema</CardDescription>
+          <CardTitle className="heading-responsive text-center">Iniciar Sesión</CardTitle>
+          <CardDescription className="text-responsive text-center">
+            Ingresa tu RUT y contraseña para acceder al sistema
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="rut">RUT</Label>
+              <Label htmlFor="rut" className="text-responsive">RUT</Label>
               <Input
                 id="rut"
                 placeholder="Ingresa tu RUT"
                 value={rut.length > 1 ? formatearRut(rut) : rut}
                 onChange={handleRutChange}
                 required
+                className="text-responsive"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password" className="text-responsive">Contraseña</Label>
               <Input
                 id="password"
                 type="password"
@@ -188,21 +191,24 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                className="text-responsive"
               />
             </div>
             {error && (
-              <Alert variant="destructive">
+              <Alert variant="destructive" className="text-responsive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full text-responsive" disabled={loading}>
               {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="flex flex-col space-y-2">
-          <p className="text-sm text-muted-foreground">Sistema de Gestión de Ventas e Inventario</p>
-          <div className="text-xs text-muted-foreground">
+          <p className="text-sm sm:text-base text-muted-foreground text-center">
+            Sistema de Gestión de Ventas e Inventario
+          </p>
+          <div className="text-xs sm:text-sm text-muted-foreground text-center">
             <p>Credenciales de prueba:</p>
             <p>Admin: 21.003.588-5 / Admin123</p>
             <p>Vendedor: 22.222.222-2 / Vendedor123456</p>
