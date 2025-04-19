@@ -210,6 +210,9 @@ export function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
              }
         });
 
+        // Loguear el resultado completo para depuración
+        console.log("decodeSingle result:", result);
+
         if (result && result.codeResult) {
             const code = result.codeResult.code;
             if (code && code.length === 13) {
@@ -224,8 +227,13 @@ export function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
             }
         } else {
             console.log("No barcode detected in the captured area.");
-            toast({ title: "No detectado", description: "No se encontró un código de barras en el área seleccionada.", variant: "default" });
-            setIsFrozen(false);
+            // Toast más explícito
+            toast({ 
+                title: "No detectado", 
+                description: "No se pudo leer un código de barras. Asegúrate de que esté enfocado dentro del cuadro y vuelve a intentarlo.", 
+                variant: "default" 
+            });
+            setIsFrozen(false); 
             setCapturedImageDataUrl(null);
         }
     } catch (err) {
