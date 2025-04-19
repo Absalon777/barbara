@@ -62,10 +62,11 @@ export function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
             height: { min: 480, ideal: 720, max: 1080 },
           },
           area: {
-            top: "0%",
-            right: "0%",
-            left: "0%",
-            bottom: "0%",
+            // Definimos el área de escaneo como el 50% central de la pantalla
+            top: "25%",
+            right: "25%",
+            left: "25%",
+            bottom: "25%",
           },
         },
         locator: {
@@ -143,7 +144,7 @@ export function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
             
             {/* Cuadro guía para el código de barras */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-3/4 h-1/2 border-2 border-primary rounded-lg">
+              <div className="w-1/2 h-1/2 border-2 border-primary rounded-lg">
                 <div className="absolute inset-0 border-t-2 border-primary transform -translate-y-1/2"></div>
                 <div className="absolute inset-0 border-l-2 border-primary transform -translate-x-1/2"></div>
                 <div className="absolute inset-0 border-b-2 border-primary transform translate-y-1/2"></div>
