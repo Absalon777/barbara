@@ -97,8 +97,9 @@ export function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
             videoElement.style.height = '100%';
             videoElement.style.objectFit = 'cover';
             videoElement.onloadedmetadata = () => {
-                console.log(`Actual video resolution: ${videoElement?.videoWidth}x${videoElement?.videoHeight}`);
-                setIsInitialized(true)
+                // Log ya no es necesario aquí, la inicialización se mueve
+                // console.log(`>>> METADATA LOADED: Actual video resolution: ${videoElement?.videoWidth}x${videoElement?.videoHeight}`);
+                // setIsInitialized(true) // MOVIDO para después de Quagga.start()
             };
         } else {
             throw new Error("Video element not found after init");
@@ -106,6 +107,8 @@ export function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
 
         console.log("Attempting Quagga.start...")
         await Quagga.start()
+        // Establecer inicializado DESPUÉS de que start() tenga éxito
+        setIsInitialized(true) 
         console.log("Quagga started successfully.")
 
       } catch (err) {
@@ -148,7 +151,12 @@ export function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
   }, [onClose, cleanupQuagga, toast, isInitialized])
 
   const handleCapture = async () => {
-    if (!isInitialized || isFrozen || !videoRef.current || !canvasRef.current || !guideBoxRef.current) return;
+    // console.log(">>> handleCapture called"); 
+    // console.log(`>>> handleCapture check: isInitialized=${isInitialized}, isFrozen=${isFrozen}`);
+    if (!isInitialized || isFrozen || !videoRef.current || !canvasRef.current || !guideBoxRef.current) {
+        // console.log(">>> handleCapture check failed, returning.");
+        return;
+    }
 
     const videoElement = videoRef.current.querySelector('video');
     if (!videoElement) return;
@@ -286,11 +294,14 @@ export function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
         />
       </div>
 
-       {!isFrozen && isInitialized && (
-           <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-[102] bg-black/70 text-white text-center p-3 rounded-md text-sm shadow-lg pointer-events-none">
-                Posiciona el código de barras dentro del cuadro y presiona la pantalla para capturar.
-           </div>
-       )}
+       {( () => { 
+           // console.log(`>>> Instruction message check: isFrozen=${isFrozen}, isInitialized=${isInitialized}`);
+           return !isFrozen && isInitialized && (
+             <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-[102] bg-black/70 text-white text-center p-3 rounded-md text-sm shadow-lg pointer-events-none">
+                  Posiciona el código de barras dentro del cuadro y presiona la pantalla para capturar.
+             </div>
+           )
+       })() }
 
       <Button
         variant="destructive"
