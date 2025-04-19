@@ -75,17 +75,17 @@ export default function LoginPage() {
         return
       }
 
-      // Almacenar información del usuario en localStorage
-      localStorage.setItem(
-        "usuarioActual",
-        JSON.stringify({
-          id: userData.id,
-          rut: userData.rut,
-          nombre: userData.nombre,
-          rol: userData.rol,
-          activo: userData.activo,
-        })
-      )
+      // Almacenar información del usuario en localStorage y cookies
+      const userInfo = {
+        id: userData.id,
+        rut: userData.rut,
+        nombre: userData.nombre,
+        rol: userData.rol,
+        activo: userData.activo,
+      }
+      
+      localStorage.setItem("usuarioActual", JSON.stringify(userInfo))
+      document.cookie = `auth=true; path=/; max-age=86400; secure; samesite=strict`
 
       // Registrar el inicio de sesión en logs_actividad
       await supabase.from("logs_actividad").insert({

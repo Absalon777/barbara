@@ -7,6 +7,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { BarChart3, ClipboardList, Home, LogOut, Menu, Package, ShoppingCart, Users, X, Receipt } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -22,9 +23,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [])
 
-  const handleLogout = () => {
-    localStorage.removeItem("usuarioActual")
-    router.push("/login")
+  const handleLogout = async () => {
+    try {
+      // Cerrar sesión en Supabase
+      await supabase.auth.signOut()
+      
+      // Limpiar localStorage
+      localStorage.removeItem("usuarioActual")
+      
+      // Redirigir al login
+      router.push("/login")
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error)
+    }
   }
 
   const menuItems = [

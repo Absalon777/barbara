@@ -8,12 +8,18 @@ declare module 'quagga' {
         width?: number
         height?: number
         facingMode?: string
+        aspectRatio?: {
+          min: number
+          max: number
+        }
       }
     }
-    locator: {
+    locator?: {
       patchSize: string
       halfSample: boolean
     }
+    numOfWorkers?: number
+    frequency?: number
     decoder: {
       readers: string[]
     }
@@ -28,7 +34,7 @@ declare module 'quagga' {
   }
 
   interface Quagga {
-    init(config: QuaggaConfig): Promise<void>
+    init(config: QuaggaConfig, callback?: (error: Error | null) => void): void
     start(): void
     stop(): void
     onDetected(callback: (result: QuaggaResult) => void): void

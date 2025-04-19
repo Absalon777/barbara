@@ -58,12 +58,8 @@ export default function PuntoVentaPage() {
   const isMobile = useMobile()
 
   useEffect(() => {
-    // Limpiar el escáner cuando se desmonta el componente
-    return () => {
-      if (escanerActivo) {
-        Quagga.stop()
-      }
-    }
+    // No necesitamos limpiar Quagga aquí ya que se maneja en el componente BarcodeScanner
+    return () => {}
   }, [escanerActivo])
 
   const handleCodigoBarrasChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -329,84 +325,12 @@ export default function PuntoVentaPage() {
 
   const handleCodigoDetectado = (code: string) => {
     setCodigoBarras(code)
-    // Buscar y agregar el producto inmediatamente
-    const buscarYAgregarProducto = async () => {
-      setCargando(true)
-      setError(null)
+    setEscanerActivo(false)
+    handleBuscarProducto()
+  }
 
-      try {
-        // Buscar el producto en la base de datos
-        const { data: productos, error: errorProducto } = await supabase
-          .from("productos")
-          .select(`
-            *,
-            inventario(cantidad)
-          `)
-          .eq("codigo_barras", code)
-          .eq("activo", true)
-          .limit(1)
-
-        if (errorProducto) throw errorProducto
-
-        if (!productos || productos.length === 0) {
-          setError(`No se encontró ningún producto con el código ${code}`)
-          setCargando(false)
-          return
-        }
-
-        const producto = productos[0]
-        const stockDisponible =
-          producto.inventario && producto.inventario.length > 0 ? producto.inventario[0].cantidad : 0
-
-        if (stockDisponible <= 0) {
-          setError(`El producto ${producto.nombre} no tiene stock disponible`)
-          setCargando(false)
-          return
-        }
-
-        // Verificar si el producto ya está en el carrito
-        const productoExistente = carrito.find((p) => p.id === producto.id)
-
-        if (productoExistente) {
-          // Si ya está en el carrito, incrementar la cantidad
-          setCarrito(
-            carrito.map((p) =>
-              p.id === producto.id
-                ? {
-                    ...p,
-                    cantidad: p.cantidad + 1,
-                    subtotal: (p.cantidad + 1) * p.precio,
-                  }
-                : p
-            )
-          )
-        } else {
-          // Si no está en el carrito, agregarlo
-          setCarrito([
-            ...carrito,
-            {
-              id: producto.id,
-              codigo: producto.codigo_barras,
-              nombre: producto.nombre,
-              precio: producto.precio_venta,
-              cantidad: 1,
-              subtotal: producto.precio_venta,
-              stock_disponible: stockDisponible,
-            },
-          ])
-        }
-
-        setError(null)
-        setCodigoBarras("")
-      } catch (err: any) {
-        console.error("Error al buscar producto:", err)
-        setError("Error al buscar el producto. Inténtalo de nuevo.")
-      } finally {
-        setCargando(false)
-      }
-    }
-
-    buscarYAgregarProducto()
+  const toggleEscaner = () => {
+    setEscanerActivo(!escanerActivo)
   }
 
   const cerrarComprobante = () => {
@@ -442,7 +366,7 @@ export default function PuntoVentaPage() {
                 <Barcode className="mr-2 h-4 w-4" />
                 Buscar
               </Button>
-              <Button onClick={() => setEscanerActivo(true)}>
+              <Button onClick={toggleEscaner}>
                 <Camera className="mr-2 h-4 w-4" />
                 Iniciar Escáner
               </Button>
@@ -468,7 +392,7 @@ export default function PuntoVentaPage() {
           <div className="mt-4" ref={videoRef}>
             <BarcodeScanner 
               onDetected={handleCodigoDetectado} 
-              onClose={() => setEscanerActivo(false)} 
+              onClose={toggleEscaner} 
             />
           </div>
         </DialogContent>
