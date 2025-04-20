@@ -37,16 +37,17 @@ interface BarcodeScannerProps {
 /** Devuelve `true` si la etiqueta sugiere que es cámara frontal */
 const isFront = (label: string) => /front|user|selfie/i.test(label)
 
-const applyStyles = (el: HTMLElement | null, mirror: boolean) => {
+const styleMedia = (el: HTMLElement | null, mirror: boolean) => {
   if (!el) return
   Object.assign(el.style, {
     position: "absolute",
     inset: "0",
     width: "100%",
-    height: "100%",
-    objectFit: "cover",
+    height: "auto",
+    maxHeight: "100%",
+    objectFit: "contain",
     transform: mirror ? "scaleX(-1)" : "none",
-    pointerEvents: "none", // deja pasar clics al UI
+    pointerEvents: "none",
   })
 }
 
@@ -101,20 +102,20 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
     const config: QuaggaJSConfigObject = {
       inputStream: {
         name: "Live",
-        type: "LiveStream",
+        type: "LiveStream" as const,
         target: containerRef.current,
         constraints: {
           ...(selectedCamera ? { deviceId: { exact: selectedCamera } } : { facingMode: { ideal: "environment" } }),
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
       },
       decoder: {
         readers: [
-          { format: "ean_reader", config: { supplements: [] } },
-          { format: "ean_8_reader", config: { supplements: [] } },
-          { format: "upc_reader", config: { supplements: [] } },
-          { format: "upc_e_reader", config: { supplements: [] } },
+          "ean_reader",
+          "ean_8_reader",
+          "upc_reader",
+          "upc_e_reader",
         ],
         multiple: false,
       },
@@ -136,12 +137,11 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
     const fix = () => {
       const video = containerRef.current?.querySelector("video") as HTMLVideoElement | null;
       const canvas = containerRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
-      applyStyles(video, mirror);
-      applyStyles(canvas, mirror);
+      styleMedia(video, mirror);
+      styleMedia(canvas, mirror);
     };
     fix()
-    const mo = new MutationObserver(fix)
-    if (containerRef.current) mo.observe(containerRef.current, { childList: true })
+    new MutationObserver(fix).observe(containerRef.current, { childList: true })
 
     Quagga.onDetected((result) => {
       const code = result?.codeResult?.code
@@ -217,10 +217,10 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
       {/* Container */}
-      <div className="relative w-full max-w-3xl bg-black rounded-lg overflow-hidden">
+      <div className="relative w-full max-w-none bg-black">
         {/* Loader & status */}
         {loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white z-50">
             <Loader2 className="h-10 w-10 animate-spin" />
             <p>{status}</p>
           </div>
@@ -228,7 +228,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
 
         {/* Error */}
         {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 text-white p-6">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 text-white p-6 z-50">
             <AlertTriangle className="h-10 w-10 text-destructive" />
             <p className="text-center max-w-xs">{error}</p>
             <Button onClick={onClose} variant="outline">
@@ -239,12 +239,12 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
 
         {/* Camera selector */}
         {cameras.length > 1 && (
-          <div className="absolute top-4 left-4 z-30">
+          <div className="absolute top-4 left-4 z-[70]">
             <Select value={selectedCamera} onValueChange={setSelectedCamera}>
-              <SelectTrigger className="w-[240px] bg-white/10 text-white border-white/20 backdrop-blur-sm">
+              <SelectTrigger className="w-[260px] bg-white/10 text-white border-white/20 backdrop-blur-sm">
                 <SelectValue placeholder="Seleccionar cámara" />
               </SelectTrigger>
-              <SelectContent className="z-40 max-h-64 overflow-y-auto backdrop-blur-md bg-black/80 text-white">
+              <SelectContent className="z-[80] max-h-64 overflow-y-auto backdrop-blur-md bg-black/90 text-white ring-1 ring-white/20">
                 {cameras.map((cam) => (
                   <SelectItem key={cam.deviceId} value={cam.deviceId} className="focus:bg-white/10">
                     {cam.label || `Cámara ${cam.deviceId.slice(0, 5)}`}
@@ -258,21 +258,18 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         {/* Video container for Quagga */}
         <div
           ref={containerRef}
-          className="relative w-full h-[70vh] bg-black"
+          className="relative w-screen max-w-full h-auto aspect-video bg-black"
         />
 
         {/* Overlay */}
         {!loading && !error && (
-          <div
-            className="absolute inset-0 flex items-center justify-center pointer-events-none"
-            aria-hidden="true"
-          >
-            <div className="border-4 border-blue-500/90 rounded-md w-4/5 max-w-md aspect-square" />
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div style={{ width: "95%", height: "95%" }} className="border-4 border-blue-500/90 rounded-md" />
           </div>
         )}
 
         {/* Close button */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[70]">
           <Button variant="destructive" onClick={onClose}>
             <X className="mr-2 h-4 w-4" />
             Cerrar
@@ -281,7 +278,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
 
         {/* Instructions */}
         {!loading && !error && (
-          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/70 text-white px-3 py-1 rounded-md text-sm z-30">
+          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/70 text-white px-3 py-1 rounded-md text-sm z-[70]">
             <Camera className="h-4 w-4" />
             Coloca el código dentro del recuadro
           </div>
