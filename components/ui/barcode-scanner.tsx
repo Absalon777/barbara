@@ -436,9 +436,6 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
           video: {
             deviceId: selectedCamera,
             facingMode: "environment",
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            aspectRatio: { ideal: 1.7777777778 }, // 16:9
           },
         })
 
@@ -471,9 +468,6 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
               constraints: {
                 deviceId: selectedCamera,
                 facingMode: "environment",
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                aspectRatio: { ideal: 1.7777777778 }, // 16:9
               },
             },
             decoder: { 
@@ -533,7 +527,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
   /* --------------- Render --------------- */
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-      <div ref={containerRef} className="relative w-full max-w-2xl aspect-video bg-black rounded-lg overflow-hidden">
+      <div ref={containerRef} className="relative w-full max-w-3xl bg-black rounded-lg overflow-hidden">
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
@@ -560,11 +554,12 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
 
         <video
           ref={videoRef}
-          className="w-full h-full object-cover"
+          className="w-full h-auto"
           autoPlay
           playsInline
           style={{
-            transform: "scaleX(-1)", // Invertir horizontalmente para mejor experiencia
+            transform: "scaleX(-1)",
+            maxWidth: "100%",
           }}
         />
         <canvas
