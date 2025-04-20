@@ -88,6 +88,7 @@ export default function InventarioPage() {
   const [tabActiva, setTabActiva] = useState("productos")
   const [nuevaCategoria, setNuevaCategoria] = useState("")
   const [creandoCategoria, setCreandoCategoria] = useState(false)
+  const [searchInput, setSearchInput] = useState("")
 
   const supabase = getSupabaseBrowserClient()
   const { toast } = useToast()
@@ -184,11 +185,14 @@ export default function InventarioPage() {
   }
 
   // Callback cuando el scanner detecta un código
-  const handleCodigoDetectado = (code: string) => {
-    console.log("Código detectado en inventario:", code)
-    setEscanerActivo(false) // Cierra el scanner
-    setBusqueda(code) // Pone el código en la barra de búsqueda para filtrar
-  }
+  const handleCodigoDetectado = (codigo: string) => {
+    setEscanerActivo(false);
+    setSearchInput(codigo);
+    toast({
+      title: "Código detectado",
+      description: `Se detectó el código: ${codigo}`,
+    });
+  };
 
   // --- Funciones CRUD y Movimientos (Asegurarse que usan encadenamiento opcional si es necesario) ---
 
@@ -385,9 +389,9 @@ export default function InventarioPage() {
       {/* Scanner Condicional */}
       {escanerActivo && (
         <div className="fixed inset-0 z-[100]">
-          <BarcodeScanner 
-            onDetected={handleCodigoDetectado} 
-            onClose={toggleEscaner} 
+          <BarcodeScanner
+            onDetected={handleCodigoDetectado}
+            onClose={() => setEscanerActivo(false)}
           />
         </div>
       )}
