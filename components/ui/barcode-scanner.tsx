@@ -76,8 +76,9 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
       if (!mounted.current) return
       setProcessing(false)
 
-      if (!/^\d{13}$/.test(code)) {
-        showMsg("Formato incorrecto", "Solo se aceptan códigos EAN‑13", "destructive")
+      // Aceptar cualquier código de barras válido
+      if (!code || code.length < 8) {
+        showMsg("Formato incorrecto", "Código de barras no válido", "destructive")
         return
       }
 
@@ -137,7 +138,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
           },
         },
         decoder: { 
-          readers: ["ean_reader"],
+          readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader"],
           multiple: false,
           debug: {
             drawBoundingBox: true,
@@ -459,8 +460,6 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         open={askConfirm} 
         onOpenChange={(open) => {
           if (!open) {
-            // Si el diálogo se cierra de otra manera (por ejemplo, clic fuera),
-            // asegurarse de reiniciar el escáner si no había código o cerrar
             setAskConfirm(false);
             setPendingCode(null);
             if (!pendingCode) {
@@ -469,7 +468,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="z-[100]">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-center gap-2">
               {pendingCode ? (

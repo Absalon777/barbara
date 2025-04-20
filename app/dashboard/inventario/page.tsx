@@ -187,7 +187,15 @@ export default function InventarioPage() {
   // Callback cuando el scanner detecta un código
   const handleCodigoDetectado = (codigo: string) => {
     setEscanerActivo(false);
-    setSearchInput(codigo);
+    
+    // Si estamos en el diálogo de producto (creando o editando)
+    if (dialogoAbierto && productoEditando) {
+      setProductoEditando({ ...productoEditando, codigo_barras: codigo });
+    } else {
+      // Si estamos en la vista principal, actualizar la búsqueda
+      setBusqueda(codigo);
+    }
+    
     toast({
       title: "Código detectado",
       description: `Se detectó el código: ${codigo}`,
@@ -414,10 +422,10 @@ export default function InventarioPage() {
                        <Input
                         placeholder="Buscar producto..."
                         value={busqueda}
-                        onChange={handleBusquedaChange}
+                        onChange={(e) => setBusqueda(e.target.value)}
                         className="max-w-sm flex-grow"
                       />
-                      <Button onClick={toggleEscaner} variant="outline"> 
+                      <Button onClick={() => setEscanerActivo(true)} variant="outline"> 
                           <Camera className="mr-2 h-4 w-4" /> Escanear
                       </Button>
                       {esAdmin && (
