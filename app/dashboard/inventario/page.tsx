@@ -399,7 +399,10 @@ export default function InventarioPage() {
         <div className="fixed inset-0 z-[100]">
           <BarcodeScanner
             onDetected={handleCodigoDetectado}
-            onClose={() => setEscanerActivo(false)}
+            onClose={() => {
+              setEscanerActivo(false);
+              // No cerramos el diálogo del producto aquí
+            }}
           />
         </div>
       )}
