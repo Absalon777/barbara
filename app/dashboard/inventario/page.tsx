@@ -236,25 +236,27 @@ export default function InventarioPage() {
   const handleGuardarProducto = async () => {
     if (!productoEditando) return;
     console.log("Guardando producto:", productoEditando);
-    // ... (lógica de validación y guardado) ...
-    // Asegurar que la lógica aquí maneja bien productoEditando.categoria_id, etc. (pueden ser null)
+    
     try {
       const datosGuardar = {
         codigo_barras: productoEditando.codigo_barras,
         nombre: productoEditando.nombre,
         descripcion: productoEditando.descripcion,
-        categoria_id: productoEditando.categoria_id || null, // Asegurar null si es vacío
+        categoria_id: productoEditando.categoria_id || null,
         precio_venta: Number(productoEditando.precio_venta) || 0,
         precio_costo: Number(productoEditando.precio_costo) || 0,
         stock_minimo: Number(productoEditando.stock_minimo) || 0,
-        proveedor_id: productoEditando.proveedor_id || null, // Asegurar null si es vacío
+        proveedor_id: productoEditando.proveedor_id || null,
         updated_at: new Date(),
       };
 
       let error = null;
+      let productoId = null;
+
       if (productoEditando.id) { // Actualizar
         const { error: updateError } = await supabase.from("productos").update(datosGuardar).eq("id", productoEditando.id);
         error = updateError;
+        productoId = productoEditando.id;
       } else { // Crear
         // Validar código de barras único al crear
         const { data: existente } = await supabase.from("productos").select('id').eq('codigo_barras', productoEditando.codigo_barras).maybeSingle();
@@ -262,11 +264,41 @@ export default function InventarioPage() {
           toast({ title: "Error", description: "El código de barras ya existe.", variant: "destructive" });
           return;
         }
-        const { error: insertError } = await supabase.from("productos").insert([{ ...datosGuardar, activo: true }]);
+        const { data: newProduct, error: insertError } = await supabase.from("productos").insert([{ ...datosGuardar, activo: true }]).select().single();
         error = insertError;
+        productoId = newProduct?.id;
       }
 
       if (error) throw error;
+
+      // Manejar el stock inicial
+      if (productoId) {
+        const stockInicial = Number(productoEditando.stock) || 0;
+        
+        // Verificar si ya existe un registro de inventario
+        const { data: inventarioExistente } = await supabase
+          .from("inventario")
+          .select("id, cantidad")
+          .eq("producto_id", productoId)
+          .single();
+
+        if (inventarioExistente) {
+          // Actualizar el stock existente
+          const { error: updateStockError } = await supabase
+            .from("inventario")
+            .update({ cantidad: stockInicial })
+            .eq("id", inventarioExistente.id);
+          
+          if (updateStockError) throw updateStockError;
+        } else {
+          // Crear nuevo registro de inventario
+          const { error: insertStockError } = await supabase
+            .from("inventario")
+            .insert([{ producto_id: productoId, cantidad: stockInicial }]);
+          
+          if (insertStockError) throw insertStockError;
+        }
+      }
 
       toast({ title: "Éxito", description: "Producto guardado correctamente." });
       setDialogoAbierto(false);
@@ -275,7 +307,7 @@ export default function InventarioPage() {
       console.error("Error guardando producto:", err);
       toast({ title: "Error", description: `No se pudo guardar el producto: ${err.message}`, variant: "destructive" });
     }
-  }
+  };
 
   const handleGuardarCategoria = async () => {
     if (!nuevaCategoria.trim()) return;
@@ -463,10 +495,11 @@ export default function InventarioPage() {
                                           <TableRow>
                                             <TableHead>Código</TableHead>
                                             <TableHead>Nombre</TableHead>
+                                            <TableHead>Descripción</TableHead>
                                             <TableHead>Categoría</TableHead>
                                             <TableHead>Stock</TableHead>
-                                            <TableHead>P. Venta</TableHead>
-                                            {esAdmin && <TableHead>P. Costo</TableHead>}
+                                            <TableHead>Precio Venta</TableHead>
+                                            {esAdmin && <TableHead>Precio Costo</TableHead>}
                                             <TableHead>Proveedor</TableHead>
                                             <TableHead>Stock Mín.</TableHead>
                                             <TableHead className="text-right">Acciones</TableHead>
@@ -477,7 +510,10 @@ export default function InventarioPage() {
                                             <TableRow key={producto.id}>
                                               <TableCell className="font-mono text-xs">{producto.codigo_barras}</TableCell>
                                               <TableCell>{producto.nombre}</TableCell>
-                                              <TableCell>{producto.categoria_nombre}</TableCell>
+                                              <TableCell className="max-w-[200px] truncate" title={producto.descripcion || ""}>
+                                                {producto.descripcion || "-"}
+                                              </TableCell>
+                                              <TableCell>{producto.categoria_nombre || "Sin categoría"}</TableCell>
                                               <TableCell className="text-center">
                                                 <Badge variant={producto.stock !== null && producto.stock_minimo !== null && producto.stock <= producto.stock_minimo ? "destructive" : "secondary"}>
                                                   {producto.stock ?? 0}
@@ -518,10 +554,13 @@ export default function InventarioPage() {
                                                       </Badge>
                                                   </div>
                                                   <div className="text-xs space-y-1 text-muted-foreground mb-2">
-                                                      <p>Cat: {producto.categoria_nombre}</p>
+                                                      <p className="line-clamp-2" title={producto.descripcion || ""}>
+                                                          {producto.descripcion || "Sin descripción"}
+                                                      </p>
+                                                      <p>Cat: {producto.categoria_nombre || "Sin categoría"}</p>
                                                       <p>P.Venta: <span className="font-medium text-foreground">{formatCurrency(producto.precio_venta)}</span></p>
                                                       {esAdmin && <p>P.Costo: <span className="font-medium text-foreground">{formatCurrency(producto.precio_costo)}</span></p>}
-                                                      <p>Prov: {producto.proveedor_nombre}</p>
+                                                      <p>Prov: {producto.proveedor_nombre || "Sin proveedor"}</p>
                                                       <p>Stock Mín: {producto.stock_minimo ?? 0}</p>
                                                   </div>
                                                   <div className="flex justify-end gap-2">
@@ -627,7 +666,6 @@ export default function InventarioPage() {
       <Dialog 
         open={dialogoAbierto} 
         onOpenChange={(open) => {
-          // No permitir cerrar el diálogo con el botón X o haciendo clic fuera
           if (!open) {
             return;
           }
@@ -670,6 +708,18 @@ export default function InventarioPage() {
                   value={productoEditando.nombre} 
                   onChange={(e) => setProductoEditando({...productoEditando, nombre: e.target.value})} 
                   className="col-span-3" 
+                />
+              </div>
+
+              {/* Descripción */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="descripcion" className="text-right">Descripción</Label>
+                <Textarea 
+                  id="descripcion" 
+                  value={productoEditando.descripcion || ""} 
+                  onChange={(e) => setProductoEditando({...productoEditando, descripcion: e.target.value})} 
+                  className="col-span-3" 
+                  placeholder="Ingresa una descripción del producto"
                 />
               </div>
 

@@ -24,6 +24,11 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-auth"
 import { useToast } from "@/hooks/use-toast"
 import { useMobile } from "@/hooks/use-mobile"
 import BarcodeScanner from "@/components/ui/barcode-scanner"
+import { Badge } from "@/components/ui/badge"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Check, ChevronsUpDown } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 // Importar la biblioteca para escaneo de códigos de barras
 import Quagga from "quagga"
@@ -40,6 +45,9 @@ interface ProductoCarrito {
 
 export default function PuntoVentaPage() {
   const [codigoBarras, setCodigoBarras] = useState("")
+  const [busqueda, setBusqueda] = useState("")
+  const [productos, setProductos] = useState<any[]>([])
+  const [productosFiltrados, setProductosFiltrados] = useState<any[]>([])
   const [carrito, setCarrito] = useState<ProductoCarrito[]>([])
   const [total, setTotal] = useState(0)
   const [impuestos, setImpuestos] = useState(0)
@@ -51,6 +59,8 @@ export default function PuntoVentaPage() {
   const [metodoPago, setMetodoPago] = useState("efectivo")
   const [ventaExitosa, setVentaExitosa] = useState(false)
   const [ultimaVenta, setUltimaVenta] = useState<any>(null)
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState("")
 
   const videoRef = useRef<HTMLDivElement>(null)
   const supabase = getSupabaseBrowserClient()
@@ -62,38 +72,58 @@ export default function PuntoVentaPage() {
     return () => {}
   }, [escanerActivo])
 
-  const handleCodigoBarrasChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setCodigoBarras(e.target.value)
-  }
+  // Cargar productos al inicio
+  useEffect(() => {
+    const cargarProductos = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("productos")
+          .select(`
+            *,
+            inventario(cantidad)
+          `)
+          .eq("activo", true)
 
-  const handleBuscarProducto = async () => {
-    if (!codigoBarras) return
+        if (error) throw error
+        setProductos(data || [])
+      } catch (err) {
+        console.error("Error al cargar productos:", err)
+      }
+    }
+    cargarProductos()
+  }, [])
+
+  // Filtrar productos según la búsqueda
+  useEffect(() => {
+    if (busqueda.trim() === "") {
+      setProductosFiltrados([])
+    } else {
+      const filtrados = productos.filter(producto =>
+        producto.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+        producto.codigo_barras.toLowerCase().includes(busqueda.toLowerCase())
+      )
+      setProductosFiltrados(filtrados)
+    }
+  }, [busqueda, productos])
+
+  const handleBuscarProducto = async (codigo: string) => {
+    if (!codigo) return
     setCargando(true)
     setError(null)
 
     try {
-      // Buscar el producto en la base de datos
-      const { data: productos, error: errorProducto } = await supabase
-        .from("productos")
-        .select(`
-          *,
-          inventario(cantidad)
-        `)
-        .eq("codigo_barras", codigoBarras)
-        .eq("activo", true)
-        .limit(1)
+      const producto = productos.find(p => 
+        p.codigo_barras === codigo || 
+        p.nombre.toLowerCase().includes(codigo.toLowerCase())
+      )
 
-      if (errorProducto) throw errorProducto
-
-      if (!productos || productos.length === 0) {
-        setError(`No se encontró ningún producto con el código ${codigoBarras}`)
+      if (!producto) {
+        setError(`No se encontró ningún producto con el código ${codigo}`)
         setCargando(false)
         return
       }
 
-      const producto = productos[0]
-      const stockDisponible =
-        producto.inventario && producto.inventario.length > 0 ? producto.inventario[0].cantidad : 0
+      const stockDisponible = producto.inventario?.[0]?.cantidad || 0
 
       if (stockDisponible <= 0) {
         setError(`El producto ${producto.nombre} no tiene stock disponible`)
@@ -105,14 +135,12 @@ export default function PuntoVentaPage() {
       const productoExistente = carrito.find((p) => p.id === producto.id)
 
       if (productoExistente) {
-        // Si ya existe, verificar si hay suficiente stock
         if (productoExistente.cantidad >= stockDisponible) {
           setError(`No hay suficiente stock disponible de ${producto.nombre}`)
           setCargando(false)
           return
         }
 
-        // Si hay stock, aumentamos la cantidad
         const nuevoCarrito = carrito.map((p) =>
           p.id === producto.id
             ? {
@@ -120,12 +148,11 @@ export default function PuntoVentaPage() {
                 cantidad: p.cantidad + 1,
                 subtotal: (p.cantidad + 1) * p.precio,
               }
-            : p,
+            : p
         )
         setCarrito(nuevoCarrito)
         calcularTotales(nuevoCarrito)
       } else {
-        // Si no existe, lo agregamos al carrito
         const nuevoProducto: ProductoCarrito = {
           id: producto.id,
           codigo: producto.codigo_barras,
@@ -140,8 +167,8 @@ export default function PuntoVentaPage() {
         calcularTotales(nuevoCarrito)
       }
 
-      // Limpiar el campo de código de barras
       setCodigoBarras("")
+      setBusqueda("")
     } catch (err: any) {
       console.error("Error al buscar producto:", err)
       setError("Error al buscar el producto. Inténtalo de nuevo.")
@@ -324,83 +351,14 @@ export default function PuntoVentaPage() {
   }
 
   const handleCodigoDetectado = (code: string) => {
-    setCodigoBarras(code)
+    setBusqueda(code)
+    setOpen(true)
+    handleBuscarProducto(code)
     setEscanerActivo(false)
-    handleBuscarProductoCodigo(code)
   }
 
   const toggleEscaner = () => {
     setEscanerActivo(!escanerActivo)
-  }
-
-  const handleBuscarProductoCodigo = async (codigo: string) => {
-    if (!codigo) return
-    setCodigoBarras(codigo)
-    setCargando(true)
-    setError(null)
-
-    try {
-      const { data: productos, error: errorProducto } = await supabase
-        .from("productos")
-        .select(`*, inventario(cantidad)`)
-        .eq("codigo_barras", codigo)
-        .eq("activo", true)
-        .limit(1)
-
-      if (errorProducto) throw errorProducto
-
-      if (!productos || productos.length === 0) {
-        setError(`No se encontró ningún producto con el código ${codigo}`)
-        setCargando(false)
-        return
-      }
-
-      const producto = productos[0]
-      const stockDisponible =
-        producto.inventario && producto.inventario.length > 0 ? producto.inventario[0].cantidad : 0
-
-      if (stockDisponible <= 0) {
-        setError(`El producto ${producto.nombre} no tiene stock disponible`)
-        setCargando(false)
-        return
-      }
-
-      const productoExistente = carrito.find((p) => p.id === producto.id)
-
-      if (productoExistente) {
-        if (productoExistente.cantidad >= stockDisponible) {
-          setError(`No hay suficiente stock disponible de ${producto.nombre}`)
-          setCargando(false)
-          return
-        }
-        const nuevoCarrito = carrito.map((p) =>
-          p.id === producto.id
-            ? { ...p, cantidad: p.cantidad + 1, subtotal: (p.cantidad + 1) * p.precio }
-            : p
-        )
-        setCarrito(nuevoCarrito)
-        calcularTotales(nuevoCarrito)
-      } else {
-        const nuevoProducto: ProductoCarrito = {
-          id: producto.id,
-          codigo: producto.codigo_barras,
-          nombre: producto.nombre,
-          precio: producto.precio_venta,
-          cantidad: 1,
-          subtotal: producto.precio_venta,
-          stock_disponible: stockDisponible,
-        }
-        const nuevoCarrito = [...carrito, nuevoProducto]
-        setCarrito(nuevoCarrito)
-        calcularTotales(nuevoCarrito)
-      }
-      setCodigoBarras("")
-    } catch (err: any) {
-      console.error("Error al buscar producto:", err)
-      setError("Error al buscar el producto. Inténtalo de nuevo.")
-    } finally {
-      setCargando(false)
-    }
   }
 
   const cerrarComprobante = () => {
@@ -414,145 +372,164 @@ export default function PuntoVentaPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
-      {/* **** RENDERIZAR EL SCANNER AQUÍ, EN EL NIVEL SUPERIOR **** */}
-      {escanerActivo && (
-        <BarcodeScanner
-          onDetected={handleCodigoDetectado}
-          onClose={toggleEscaner} 
-        />
-      )}
-
-      {/* El resto de la UI se oculta si el scanner está activo para evitar solapamientos */}
-      <div className={`flex flex-1 flex-col ${escanerActivo ? 'hidden' : ''}`}>
-        {/* Header (si tienes uno separado) */}
-        {/* <Header /> */}
-        
-        {/* Contenido Principal del Punto de Venta */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-          {/* Sección de Búsqueda y Botón de Escáner */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Punto de Venta</CardTitle>
-              <CardDescription>Escanea o ingresa el código de barras del producto</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col md:flex-row gap-4">
-                <Input
-                  type="text"
-                  placeholder="Código de barras"
-                  value={codigoBarras}
-                  onChange={handleCodigoBarrasChange}
-                  onKeyPress={(e) => e.key === "Enter" && handleBuscarProductoCodigo(codigoBarras)}
-                />
-                <Button onClick={() => handleBuscarProductoCodigo(codigoBarras)} disabled={cargando || !codigoBarras}>
-                  <Barcode className="mr-2 h-4 w-4" /> Buscar
-                </Button>
-                {/* ESTE BOTÓN CONTROLA EL ESTADO 'escanerActivo' */}
-                <Button onClick={toggleEscaner}>
-                  <Camera className="mr-2 h-4 w-4" /> Iniciar Escáner
-                </Button>
-              </div>
-              {error && (
-                <Alert variant="destructive" className="mt-4">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Sección de Productos y Resumen */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Columna de Productos */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Productos ({carrito.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {carrito.map((producto) => (
-                    <Card key={producto.id} className="p-4">
-                      <div className="flex justify-between items-start">
-                        <div className="space-y-1">
-                          <h3 className="font-medium">{producto.nombre}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            Código: {producto.codigo}
-                          </p>
-                          <p className="text-sm font-medium">
-                            {formatCurrency(producto.precio)} c/u
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEliminarProducto(producto.id)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="flex items-center justify-between mt-4">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleCambiarCantidad(producto.id, -1)}
-                            className="h-8 w-8 p-0"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                          <span className="font-medium">{producto.cantidad}</span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleCambiarCantidad(producto.id, 1)}
-                            className="h-8 w-8 p-0"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-muted-foreground">Subtotal</p>
-                          <p className="font-medium">{formatCurrency(producto.subtotal)}</p>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                  {carrito.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No hay productos en el carrito
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Columna de Resumen */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Resumen</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <span>{formatCurrency(subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold">
-                    <span>Total:</span>
-                    <span>{formatCurrency(total)}</span>
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button className="w-full" onClick={handleFinalizarVenta} disabled={carrito.length === 0 || cargando}>
-                  Finalizar Venta
-                </Button>
-              </CardFooter>
-            </Card>
+    <div className="flex flex-col w-full h-screen max-h-screen overflow-hidden">
+      {/* Encabezado fijo */}
+      <div className="sticky top-0 z-10 bg-background border-b p-4 w-full">
+        <div className="flex flex-col gap-4 w-full">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 w-full">
+            <h1 className="text-2xl font-bold">Punto de Venta</h1>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <Button 
+                variant="outline" 
+                onClick={toggleEscaner}
+                className="flex-1 sm:flex-none"
+              >
+                <Barcode className="mr-2 h-4 w-4" />
+                Escanear
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleFinalizarVenta}
+                className="flex-1 sm:flex-none"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Finalizar Venta
+              </Button>
+            </div>
           </div>
-        </main>
+          
+          {/* Barra de búsqueda con lista desplegable */}
+          <div className="flex flex-col sm:flex-row gap-2 w-full">
+            <div className="relative w-full">
+              <Input
+                placeholder="Buscar producto por nombre o código..."
+                value={busqueda}
+                onChange={(e) => {
+                  setBusqueda(e.target.value)
+                  setOpen(true)
+                }}
+                className="w-full"
+              />
+              {open && busqueda.trim() !== "" && productosFiltrados.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-[300px] overflow-auto">
+                  {productosFiltrados.map((producto) => (
+                    <div
+                      key={producto.id}
+                      className="p-2 hover:bg-accent cursor-pointer"
+                      onClick={() => {
+                        handleBuscarProducto(producto.codigo_barras)
+                        setOpen(false)
+                      }}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium">{producto.nombre}</span>
+                        <span className="text-sm text-muted-foreground">
+                          Código: {producto.codigo_barras} | Stock: {producto.inventario?.[0]?.cantidad || 0}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Button onClick={toggleEscaner} variant="outline" className="sm:w-auto w-full">
+              <Camera className="mr-2 h-4 w-4" />
+              Escanear
+            </Button>
+          </div>
+        </div>
       </div>
+
+      {/* Contenido principal con scroll */}
+      <div className="flex-1 overflow-hidden w-full">
+        <div className="flex flex-col h-full w-full">
+          {/* Lista de productos en la venta */}
+          <div className="flex-1 overflow-y-auto p-4 w-full">
+            <h2 className="text-lg font-semibold mb-4">Venta Actual</h2>
+            {carrito.length === 0 ? (
+              <div className="text-center text-muted-foreground py-8">
+                No hay productos en la venta
+              </div>
+            ) : (
+              <div className="space-y-4 w-full">
+                {carrito.map((item) => (
+                  <div key={item.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 bg-background rounded-lg gap-2 w-full">
+                    <div className="flex-1 w-full">
+                      <h3 className="font-medium truncate">{item.nombre}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        ${item.precio.toLocaleString()} x {item.cantidad}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleCambiarCantidad(item.id, -1)}
+                        className="flex-1 sm:flex-none"
+                      >
+                        -
+                      </Button>
+                      <span className="w-8 text-center">{item.cantidad}</span>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleCambiarCantidad(item.id, 1)}
+                        className="flex-1 sm:flex-none"
+                      >
+                        +
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleEliminarProducto(item.id)}
+                        className="flex-1 sm:flex-none"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Total y botones de acción */}
+          <div className="border-t p-4 bg-background sticky bottom-0 w-full">
+            <div className="space-y-4 w-full">
+              <div className="flex justify-between items-center w-full">
+                <span className="font-medium">Subtotal:</span>
+                <span className="text-2xl font-bold">{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between items-center w-full">
+                <span className="font-medium">Impuestos:</span>
+                <span className="text-2xl font-bold">{formatCurrency(impuestos)}</span>
+              </div>
+              <div className="flex justify-between items-center font-bold w-full">
+                <span>Total:</span>
+                <span className="text-2xl font-bold">{formatCurrency(total)}</span>
+              </div>
+            </div>
+            <Button 
+              className="w-full mt-4" 
+              size="lg"
+              onClick={handleFinalizarVenta}
+              disabled={carrito.length === 0}
+            >
+              Finalizar Venta
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Scanner */}
+      {escanerActivo && (
+        <div className="fixed inset-0 z-[100]">
+          <BarcodeScanner
+            onDetected={handleCodigoDetectado}
+            onClose={() => setEscanerActivo(false)}
+          />
+        </div>
+      )}
 
       {/* Diálogos (Finalizar Venta, Comprobante) van aquí, separados del scanner */}
       <Dialog open={dialogoFinalizarAbierto} onOpenChange={setDialogoFinalizarAbierto}>
