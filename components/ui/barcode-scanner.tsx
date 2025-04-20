@@ -396,12 +396,21 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()
         const videoDevices = devices.filter(device => device.kind === 'videoinput')
+        
+        // Encontrar la cámara trasera por defecto
+        const rearCamera = videoDevices.find(device => 
+          device.label.toLowerCase().includes('back') || 
+          device.label.toLowerCase().includes('rear') ||
+          device.label.toLowerCase().includes('trasera')
+        ) || videoDevices[0] // Si no se encuentra, usar la primera cámara
+
         setCameras(videoDevices)
-        if (videoDevices.length > 0) {
-          setSelectedCamera(videoDevices[0].deviceId)
+        if (rearCamera) {
+          setSelectedCamera(rearCamera.deviceId)
         }
       } catch (err) {
         console.error("Error al obtener cámaras:", err)
+        setError("No se pudieron obtener las cámaras disponibles")
       }
     }
 
@@ -425,9 +434,9 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             deviceId: selectedCamera,
-            facingMode: "user",
-            width: { min: 640, ideal: 1280, max: 1920 },
-            height: { min: 480, ideal: 720, max: 1080 },
+            facingMode: "environment", // Cambiar a environment para cámara trasera
+            width: 640,
+            height: 480,
           },
         })
 
@@ -462,7 +471,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
               target: quaggaContainer,
               constraints: {
                 deviceId: selectedCamera,
-                facingMode: "user",
+                facingMode: "environment", // Cambiar a environment para cámara trasera
                 width: 640,
                 height: 480,
               },
@@ -501,24 +510,24 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
             quaggaContainer.parentNode.removeChild(quaggaContainer)
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error al acceder a la cámara:", err)
-        setError("Error al acceder a la cámara. Por favor, verifica los permisos.")
+        let errorMessage = "Error al acceder a la cámara. Por favor, verifica los permisos."
+        
+        if (err.name === "NotAllowedError") {
+          errorMessage = "Se requiere permiso para acceder a la cámara. Por favor, permite el acceso."
+        } else if (err.name === "NotFoundError") {
+          errorMessage = "No se encontró ninguna cámara disponible."
+        } else if (err.name === "NotReadableError") {
+          errorMessage = "La cámara está siendo usada por otra aplicación. Por favor, cierra otras aplicaciones que puedan estar usando la cámara."
+        }
+        
+        setError(errorMessage)
         setIsLoading(false)
       }
     }
 
     initScanner()
-
-    return () => {
-      if (isScanning) {
-        Quagga.stop()
-      }
-      if (videoRef.current?.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream
-        stream.getTracks().forEach(track => track.stop())
-      }
-    }
   }, [selectedCamera])
 
   /* --------------- Render --------------- */
