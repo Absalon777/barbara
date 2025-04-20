@@ -23,7 +23,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Edit, Plus, Search, Save } from "lucide-react"
 import { getSupabaseBrowserClient } from "@/lib/supabase-auth"
 import { useToast } from "@/hooks/use-toast"
-import { validarRut, formatearRut } from "@/lib/utils"
+import { validarRut, formatearRut, formatearRutConGuion } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import * as bcrypt from "bcryptjs"
 
@@ -107,15 +107,18 @@ export default function UsuariosPage() {
       // Crear o actualizar usuario
       if (!usuarioEditando.id) {
         // Crear nuevo usuario
+        const salt = bcrypt.genSaltSync(10)
+        const hash = bcrypt.hashSync(usuarioEditando.password, salt)
+        
         const { data: newUser, error: createError } = await supabase
           .from("usuarios")
           .insert({
-            rut: usuarioEditando.rut,
+            rut: formatearRutConGuion(usuarioEditando.rut),
             nombre: usuarioEditando.nombre,
             email: usuarioEditando.email,
             rol: usuarioEditando.rol,
             activo: true,
-            password: usuarioEditando.password, // Temporalmente guardamos la contraseña sin hash
+            password_hash: hash,
           })
           .select()
           .single()
@@ -310,8 +313,11 @@ export default function UsuariosPage() {
               <Input
                 id="rut"
                 value={usuarioEditando?.rut || ""}
-                onChange={(e) => setUsuarioEditando({ ...usuarioEditando, rut: e.target.value })}
-                disabled={!!usuarioEditando?.id} // Deshabilitar edición de RUT para usuarios existentes
+                onChange={(e) => {
+                  const rutFormateado = formatearRut(e.target.value)
+                  setUsuarioEditando({ ...usuarioEditando, rut: rutFormateado })
+                }}
+                disabled={!!usuarioEditando?.id}
               />
             </div>
 

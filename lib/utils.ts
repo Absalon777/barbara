@@ -65,6 +65,20 @@ export function formatearRut(rut: string): string {
   return rutFormateado + "-" + dv
 }
 
+export function formatearRutConGuion(rut: string): string {
+  // Eliminar todo lo que no sea número o k
+  const rutLimpio = rut.replace(/[^0-9kK]/g, "").toUpperCase()
+  
+  if (rutLimpio.length < 2) return rutLimpio
+  
+  // Separar el dígito verificador
+  const cuerpo = rutLimpio.slice(0, -1)
+  const dv = rutLimpio.slice(-1)
+  
+  // Agregar solo el guión
+  return `${cuerpo}-${dv}`
+}
+
 // Función para generar un ID único
 export function generarId(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
