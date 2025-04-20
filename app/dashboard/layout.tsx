@@ -6,7 +6,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { BarChart3, ClipboardList, Home, LogOut, Menu, Package, ShoppingCart, Users, X, Receipt } from "lucide-react"
+import { BarChart3, ClipboardList, Home, LogOut, Menu, Package, ShoppingCart, Users, X, Receipt, Truck } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -56,6 +56,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       href: "/dashboard/inventario",
       icon: Package,
       roles: ["administrador", "vendedor"],
+    },
+    {
+      title: "Proveedores",
+      href: "/dashboard/proveedores",
+      icon: Truck,
+      roles: ["administrador"],
     },
     {
       title: "Categorías",

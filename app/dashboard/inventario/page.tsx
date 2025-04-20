@@ -32,14 +32,14 @@ interface ProductoInventario {
   nombre: string;
   descripcion: string;
   categoria_id: string | null;
-  precio_venta: number;
-  precio_costo: number;
-  stock_minimo: number;
+  precio_venta: number | null;
+  precio_costo: number | null;
+  stock_minimo: number | null;
   proveedor_id: string | null;
   activo: boolean;
   created_at: string;
   updated_at: string;
-  stock: number; // Añadido en formateo
+  stock: number | null; // Añadido en formateo
   categoria_nombre: string; // Añadido en formateo
   proveedor_nombre: string; // Añadido en formateo
 }
@@ -195,10 +195,21 @@ export default function InventarioPage() {
   const handleNuevoProducto = () => {
     if (!esAdmin) return toast({ title: "Acceso denegado", variant: "destructive" });
     setProductoEditando({ // Objeto inicial vacío/por defecto
-      id: "", codigo_barras: "", nombre: "", descripcion: "", categoria_id: null,
-      precio_venta: 0, precio_costo: 0, stock_minimo: 0, proveedor_id: null,
-      activo: true, created_at: "", updated_at: "", stock: 0,
-      categoria_nombre: "", proveedor_nombre: ""
+      id: "", 
+      codigo_barras: "", 
+      nombre: "", 
+      descripcion: "", 
+      categoria_id: null,
+      precio_venta: null, 
+      precio_costo: null, 
+      stock_minimo: null, 
+      proveedor_id: null,
+      activo: true, 
+      created_at: "", 
+      updated_at: "", 
+      stock: null,
+      categoria_nombre: "", 
+      proveedor_nombre: ""
     });
     setDialogoAbierto(true)
   }
@@ -364,8 +375,8 @@ export default function InventarioPage() {
 
   // --- Renderizado --- 
 
-  const formatCurrency = (value: number | undefined): string => {
-    if (value === undefined || isNaN(value)) return "$0";
+  const formatCurrency = (value: number | null | undefined): string => {
+    if (value === null || value === undefined) return "$0";
     return "$" + value.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
 
@@ -373,10 +384,12 @@ export default function InventarioPage() {
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Scanner Condicional */}
       {escanerActivo && (
-        <BarcodeScanner 
-          onDetected={handleCodigoDetectado} 
-          onClose={toggleEscaner} 
-        />
+        <div className="fixed inset-0 z-[100]">
+          <BarcodeScanner 
+            onDetected={handleCodigoDetectado} 
+            onClose={toggleEscaner} 
+          />
+        </div>
       )}
 
       {/* Contenido principal (oculto si scanner activo) */}
@@ -450,14 +463,14 @@ export default function InventarioPage() {
                                               <TableCell>{producto.nombre}</TableCell>
                                               <TableCell>{producto.categoria_nombre}</TableCell>
                                               <TableCell className="text-center">
-                                                <Badge variant={producto.stock <= producto.stock_minimo ? "destructive" : "secondary"}>
-                                                  {producto.stock}
+                                                <Badge variant={producto.stock !== null && producto.stock_minimo !== null && producto.stock <= producto.stock_minimo ? "destructive" : "secondary"}>
+                                                  {producto.stock ?? 0}
                                                 </Badge>
                                               </TableCell>
                                               <TableCell className="text-right">{formatCurrency(producto.precio_venta)}</TableCell>
                                               {esAdmin && <TableCell className="text-right">{formatCurrency(producto.precio_costo)}</TableCell>}
                                               <TableCell>{producto.proveedor_nombre}</TableCell>
-                                              <TableCell className="text-center">{producto.stock_minimo}</TableCell>
+                                              <TableCell className="text-center">{producto.stock_minimo ?? 0}</TableCell>
                                               <TableCell className="text-right">
                                                 {esAdmin && (
                                                   <Button variant="outline" size="sm" onClick={() => handleAbrirMovimiento(producto)} className="mr-1 h-8 px-2">+/-</Button>
@@ -484,8 +497,8 @@ export default function InventarioPage() {
                                                           <h3 className="font-semibold text-sm">{producto.nombre}</h3>
                                                           <p className="text-xs text-muted-foreground">{producto.codigo_barras}</p>
                                                       </div>
-                                                      <Badge variant={producto.stock <= producto.stock_minimo ? "destructive" : "secondary"} className="ml-2 shrink-0">
-                                                          Stock: {producto.stock}
+                                                      <Badge variant={producto.stock !== null && producto.stock_minimo !== null && producto.stock <= producto.stock_minimo ? "destructive" : "secondary"} className="ml-2 shrink-0">
+                                                          Stock: {producto.stock ?? 0}
                                                       </Badge>
                                                   </div>
                                                   <div className="text-xs space-y-1 text-muted-foreground mb-2">
@@ -493,7 +506,7 @@ export default function InventarioPage() {
                                                       <p>P.Venta: <span className="font-medium text-foreground">{formatCurrency(producto.precio_venta)}</span></p>
                                                       {esAdmin && <p>P.Costo: <span className="font-medium text-foreground">{formatCurrency(producto.precio_costo)}</span></p>}
                                                       <p>Prov: {producto.proveedor_nombre}</p>
-                                                      <p>Stock Mín: {producto.stock_minimo}</p>
+                                                      <p>Stock Mín: {producto.stock_minimo ?? 0}</p>
                                                   </div>
                                                   <div className="flex justify-end gap-2">
                                                       {esAdmin && (
@@ -605,43 +618,144 @@ export default function InventarioPage() {
           </DialogHeader>
           {productoEditando && (
             <div className="grid gap-4 py-4">
-              {/* ... (campos del formulario: codigo_barras, nombre, etc.) ... */}
-              {/* Ejemplo campo nombre: */}
-               <div className="grid grid-cols-4 items-center gap-4">
-                 <Label htmlFor="nombre" className="text-right">Nombre</Label>
-                 <Input id="nombre" value={productoEditando.nombre} onChange={(e) => setProductoEditando({...productoEditando, nombre: e.target.value})} className="col-span-3" />
-               </div>
-               {/* ... otros campos ... */}
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="categoria" className="text-right">Categoría</Label>
-                  <Select
-                    value={productoEditando.categoria_id || ""}
-                    onValueChange={(value) => setProductoEditando({ ...productoEditando, categoria_id: value || null })}
+              {/* Código de barras */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="codigo_barras" className="text-right">Código de barras</Label>
+                <div className="col-span-3 flex gap-2">
+                  <Input 
+                    id="codigo_barras" 
+                    value={productoEditando.codigo_barras} 
+                    onChange={(e) => setProductoEditando({...productoEditando, codigo_barras: e.target.value})} 
+                  />
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={() => setEscanerActivo(true)}
+                    title="Escanear código de barras"
                   >
-                    <SelectTrigger className="col-span-3">
-                      <SelectValue placeholder="Selecciona categoría" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value=""><em>Sin categoría</em></SelectItem>
-                      {categorias.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>{cat.nombre}</SelectItem>
-                      ))}
-                      {/* Opción para crear nueva categoría */}
-                       <div className="p-2 border-t mt-2">
-                         <Input 
-                           placeholder="Nueva categoría..."
-                           value={nuevaCategoria}
-                           onChange={(e) => setNuevaCategoria(e.target.value)}
-                           className="mb-2"
-                         />
-                         <Button onClick={handleGuardarCategoria} disabled={creandoCategoria || !nuevaCategoria.trim()} size="sm" className="w-full">
-                           {creandoCategoria ? "Creando..." : "Crear Categoría"}
-                         </Button>
-                       </div>
-                    </SelectContent>
-                  </Select>
-                 </div>
-               {/* ... más campos ... */}
+                    <Barcode className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Nombre */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="nombre" className="text-right">Nombre</Label>
+                <Input 
+                  id="nombre" 
+                  value={productoEditando.nombre} 
+                  onChange={(e) => setProductoEditando({...productoEditando, nombre: e.target.value})} 
+                  className="col-span-3" 
+                />
+              </div>
+
+              {/* Categoría */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="categoria" className="text-right">Categoría</Label>
+                <Select
+                  value={productoEditando.categoria_id || "none"}
+                  onValueChange={(value) => setProductoEditando({ 
+                    ...productoEditando, 
+                    categoria_id: value === "none" ? null : value 
+                  })}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Selecciona categoría" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none"><em>Sin categoría</em></SelectItem>
+                    {categorias.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>{cat.nombre}</SelectItem>
+                    ))}
+                    <div className="p-2 border-t mt-2">
+                      <Input 
+                        placeholder="Nueva categoría..."
+                        value={nuevaCategoria}
+                        onChange={(e) => setNuevaCategoria(e.target.value)}
+                        className="mb-2"
+                      />
+                      <Button 
+                        onClick={handleGuardarCategoria} 
+                        disabled={creandoCategoria || !nuevaCategoria.trim()} 
+                        size="sm" 
+                        className="w-full"
+                      >
+                        {creandoCategoria ? "Creando..." : "Crear Categoría"}
+                      </Button>
+                    </div>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Precio de venta */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="precio_venta" className="text-right">Precio de venta</Label>
+                <Input 
+                  id="precio_venta" 
+                  type="number" 
+                  value={productoEditando.precio_venta ?? ""} 
+                  onChange={(e) => setProductoEditando({...productoEditando, precio_venta: e.target.value ? Number(e.target.value) : null})} 
+                  className="col-span-3" 
+                />
+              </div>
+
+              {/* Precio de costo */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="precio_costo" className="text-right">Precio de costo</Label>
+                <Input 
+                  id="precio_costo" 
+                  type="number" 
+                  value={productoEditando.precio_costo ?? ""} 
+                  onChange={(e) => setProductoEditando({...productoEditando, precio_costo: e.target.value ? Number(e.target.value) : null})} 
+                  className="col-span-3" 
+                />
+              </div>
+
+              {/* Proveedor */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="proveedor" className="text-right">Proveedor</Label>
+                <Select
+                  value={productoEditando.proveedor_id || "none"}
+                  onValueChange={(value) => setProductoEditando({ 
+                    ...productoEditando, 
+                    proveedor_id: value === "none" ? null : value 
+                  })}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Selecciona proveedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none"><em>Sin proveedor</em></SelectItem>
+                    {proveedores.map((prov) => (
+                      <SelectItem key={prov.id} value={prov.id}>{prov.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Stock mínimo */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="stock_minimo" className="text-right">Stock mínimo</Label>
+                <Input 
+                  id="stock_minimo" 
+                  type="number" 
+                  value={productoEditando.stock_minimo ?? ""} 
+                  onChange={(e) => setProductoEditando({...productoEditando, stock_minimo: e.target.value ? Number(e.target.value) : null})} 
+                  className="col-span-3" 
+                />
+              </div>
+
+              {/* Stock inicial */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="stock_inicial" className="text-right">Stock inicial</Label>
+                <Input 
+                  id="stock_inicial" 
+                  type="number" 
+                  value={productoEditando.stock ?? ""} 
+                  onChange={(e) => setProductoEditando({...productoEditando, stock: e.target.value ? Number(e.target.value) : null})} 
+                  className="col-span-3" 
+                />
+              </div>
             </div>
           )}
           <DialogFooter>
