@@ -55,6 +55,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
   const [selectedCamera, setSelectedCamera] = useState<string>("")
   const [isLoading, setIsLoading] = useState(true)
+  const [showVideo, setShowVideo] = useState(false)
 
   /* --------------- Utilidades --------------- */
   const showMsg = React.useCallback(
@@ -419,20 +420,28 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
   }, [])
 
   useEffect(() => {
-    if (!selectedCamera) return
+    let stream: MediaStream | null = null
+    let quaggaContainer: HTMLDivElement | null = null
 
     const initScanner = async () => {
       try {
         setIsLoading(true)
         setError(null)
+        setShowVideo(false)
 
         // Detener el escaneo actual si existe
         if (isScanning) {
           Quagga.stop()
         }
 
+        // Limpiar el stream anterior si existe
+        if (videoRef.current?.srcObject) {
+          const oldStream = videoRef.current.srcObject as MediaStream
+          oldStream.getTracks().forEach(track => track.stop())
+        }
+
         // Configurar la cámara seleccionada
-        const stream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia({
           video: {
             deviceId: selectedCamera,
             facingMode: "environment",
@@ -458,7 +467,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         }
 
         // Crear un contenedor específico para Quagga
-        const quaggaContainer = document.createElement('div')
+        quaggaContainer = document.createElement('div')
         quaggaContainer.style.width = '100%'
         quaggaContainer.style.height = '100%'
         quaggaContainer.style.position = 'absolute'
@@ -499,20 +508,20 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
             if (err) {
               console.error("Error al inicializar Quagga:", err)
               setError("Error al inicializar el escáner. Por favor, intenta de nuevo.")
+              if (stream) {
+                stream.getTracks().forEach(track => track.stop())
+              }
+              if (quaggaContainer?.parentNode) {
+                quaggaContainer.parentNode.removeChild(quaggaContainer)
+              }
               return
             }
             setIsScanning(true)
             setIsLoading(false)
+            setShowVideo(true)
             Quagga.start()
           }
         )
-
-        // Limpiar al desmontar
-        return () => {
-          if (quaggaContainer.parentNode) {
-            quaggaContainer.parentNode.removeChild(quaggaContainer)
-          }
-        }
       } catch (err: any) {
         console.error("Error al acceder a la cámara:", err)
         let errorMessage = "Error al acceder a la cámara. Por favor, verifica los permisos."
@@ -527,10 +536,23 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         
         setError(errorMessage)
         setIsLoading(false)
+        setShowVideo(false)
       }
     }
 
     initScanner()
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop())
+      }
+      if (quaggaContainer?.parentNode) {
+        quaggaContainer.parentNode.removeChild(quaggaContainer)
+      }
+      if (isScanning) {
+        Quagga.stop()
+      }
+    }
   }, [selectedCamera])
 
   /* --------------- Render --------------- */
@@ -540,6 +562,16 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+          </div>
+        )}
+        
+        {error && !showVideo && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 text-white p-6">
+            <AlertTriangle className="h-10 w-10 text-destructive" />
+            <p className="text-center">{error}</p>
+            <Button onClick={onClose} variant="outline">
+              Cerrar
+            </Button>
           </div>
         )}
         
@@ -561,32 +593,36 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
           </Select>
         </div>
 
-        <video
-          ref={videoRef}
-          className="w-full h-auto"
-          autoPlay
-          playsInline
-          style={{
-            transform: "scaleX(-1)",
-            maxWidth: "100%",
-          }}
-        />
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ display: "none" }}
-        />
+        {showVideo && (
+          <>
+            <video
+              ref={videoRef}
+              className="w-full h-auto"
+              autoPlay
+              playsInline
+              style={{
+                transform: "scaleX(-1)",
+                maxWidth: "100%",
+              }}
+            />
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 w-full h-full"
+              style={{ display: "none" }}
+            />
 
-        {/* overlay centrado */}
-        <div className="
-          absolute inset-1/2 
-          w-[70%] md:w-[60%] 
-          aspect-square md:aspect-video
-          -translate-x-1/2 -translate-y-1/2
-          border-4 border-blue-500/90 rounded-md
-          pointer-events-none
-          z-10
-        " />
+            {/* overlay centrado */}
+            <div className="
+              absolute inset-1/2 
+              w-[70%] md:w-[60%] 
+              aspect-square md:aspect-video
+              -translate-x-1/2 -translate-y-1/2
+              border-4 border-blue-500/90 rounded-md
+              pointer-events-none
+              z-10
+            " />
+          </>
+        )}
 
         {/* Botones principales (siempre visibles) */}
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
@@ -605,17 +641,6 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/60 text-white z-[15]">
             <Loader2 className="h-10 w-10 animate-spin" />
             <p>{status}</p>
-          </div>
-        )}
-
-        {/* =========  Error cámara ========= */}
-        {cameraErr && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 text-center text-white z-[15] p-6">
-            <AlertTriangle className="h-10 w-10 text-destructive" />
-            <p className="font-medium">{cameraErr}</p>
-            <Button onClick={onClose} variant="outline">
-              Cerrar
-            </Button>
           </div>
         )}
 
