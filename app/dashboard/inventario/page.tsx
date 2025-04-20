@@ -191,6 +191,7 @@ export default function InventarioPage() {
     // Si estamos en el diálogo de producto (creando o editando)
     if (dialogoAbierto && productoEditando) {
       setProductoEditando({ ...productoEditando, codigo_barras: codigo });
+      // No cerramos el diálogo, solo actualizamos el código
     } else {
       // Si estamos en la vista principal, actualizar la búsqueda
       setBusqueda(codigo);
@@ -623,7 +624,15 @@ export default function InventarioPage() {
       </div>
 
       {/* --- DIÁLOGOS --- */}
-      <Dialog open={dialogoAbierto} onOpenChange={setDialogoAbierto}>
+      <Dialog 
+        open={dialogoAbierto} 
+        onOpenChange={(open) => {
+          // No permitir cerrar el diálogo con el botón X o haciendo clic fuera
+          if (!open) {
+            return;
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>{productoEditando?.id ? "Editar" : "Nuevo"} Producto</DialogTitle>
@@ -775,7 +784,7 @@ export default function InventarioPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogoAbierto(false)}>Cancelar</Button>
-            <Button onClick={handleGuardarProducto}>Guardar Cambios</Button>
+            <Button onClick={handleGuardarProducto}>Guardar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

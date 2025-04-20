@@ -362,7 +362,6 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
     setAskConfirm(false);
     setPendingCode(null);
     showMsg("Código confirmado", pendingCode);
-    onClose();
   }
 
   const confirmNo = () => {
