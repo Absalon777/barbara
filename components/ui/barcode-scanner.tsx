@@ -425,23 +425,46 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             deviceId: selectedCamera,
-            facingMode: "environment",
+            facingMode: "user",
+            width: { min: 640, ideal: 1280, max: 1920 },
+            height: { min: 480, ideal: 720, max: 1080 },
           },
         })
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream
+          // Esperar a que el video esté listo y tenga dimensiones
+          await new Promise((resolve) => {
+            if (videoRef.current) {
+              videoRef.current.onloadedmetadata = () => {
+                // Forzar dimensiones específicas
+                videoRef.current!.width = 640
+                videoRef.current!.height = 480
+                resolve(true)
+              }
+            }
+          })
         }
+
+        // Crear un contenedor específico para Quagga
+        const quaggaContainer = document.createElement('div')
+        quaggaContainer.style.width = '640px'
+        quaggaContainer.style.height = '480px'
+        quaggaContainer.style.position = 'absolute'
+        quaggaContainer.style.visibility = 'hidden'
+        containerRef.current?.appendChild(quaggaContainer)
 
         Quagga.init(
           {
             inputStream: {
               name: "Live",
               type: "LiveStream",
-              target: containerRef.current as Element,
+              target: quaggaContainer,
               constraints: {
                 deviceId: selectedCamera,
-                facingMode: "environment",
+                facingMode: "user",
+                width: 640,
+                height: 480,
               },
             },
             decoder: { 
@@ -471,6 +494,13 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
             Quagga.start()
           }
         )
+
+        // Limpiar al desmontar
+        return () => {
+          if (quaggaContainer.parentNode) {
+            quaggaContainer.parentNode.removeChild(quaggaContainer)
+          }
+        }
       } catch (err) {
         console.error("Error al acceder a la cámara:", err)
         setError("Error al acceder a la cámara. Por favor, verifica los permisos.")
