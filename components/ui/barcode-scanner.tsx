@@ -448,23 +448,40 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
           },
         })
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          
-          // Esperar a que el video esté completamente listo
-          await new Promise<void>((resolve) => {
-            if (videoRef.current) {
-              const checkVideo = () => {
-                if (videoRef.current?.videoWidth && videoRef.current?.videoHeight) {
-                  resolve()
-                } else {
-                  setTimeout(checkVideo, 100)
-                }
-              }
-              videoRef.current.onloadedmetadata = checkVideo
-            }
-          })
+        if (!videoRef.current) {
+          throw new Error("Elemento de video no encontrado")
         }
+
+        videoRef.current.srcObject = stream
+        
+        // Esperar a que el video esté completamente listo
+        await new Promise<void>((resolve, reject) => {
+          if (!videoRef.current) {
+            reject(new Error("Elemento de video no encontrado"))
+            return
+          }
+
+          const checkVideo = () => {
+            if (videoRef.current?.videoWidth && videoRef.current?.videoHeight) {
+              resolve()
+            } else {
+              setTimeout(checkVideo, 100)
+            }
+          }
+
+          const timeout = setTimeout(() => {
+            reject(new Error("Tiempo de espera agotado al cargar el video"))
+          }, 5000)
+
+          videoRef.current.onloadedmetadata = () => {
+            checkVideo()
+          }
+
+          videoRef.current.onerror = () => {
+            clearTimeout(timeout)
+            reject(new Error("Error al cargar el video"))
+          }
+        })
 
         // Crear un contenedor específico para Quagga
         quaggaContainer = document.createElement('div')
@@ -472,56 +489,54 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         quaggaContainer.style.height = '100%'
         quaggaContainer.style.position = 'absolute'
         quaggaContainer.style.visibility = 'hidden'
-        containerRef.current?.appendChild(quaggaContainer)
+        if (containerRef.current) {
+          containerRef.current.appendChild(quaggaContainer)
+        }
 
-        // Esperar un momento antes de inicializar Quagga
-        await new Promise(resolve => setTimeout(resolve, 500))
-
-        Quagga.init(
-          {
-            inputStream: {
-              name: "Live",
-              type: "LiveStream",
-              target: quaggaContainer,
-              constraints: {
-                deviceId: selectedCamera,
-                facingMode: "environment",
+        // Inicializar Quagga
+        await new Promise<void>((resolve, reject) => {
+          Quagga.init(
+            {
+              inputStream: {
+                name: "Live",
+                type: "LiveStream",
+                target: quaggaContainer as Element,
+                constraints: {
+                  deviceId: selectedCamera,
+                  facingMode: "environment",
+                },
               },
+              decoder: { 
+                readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader"],
+                multiple: false,
+                debug: {
+                  drawBoundingBox: true,
+                  showFrequency: false,
+                  drawScanline: true,
+                  showPattern: false
+                }
+              },
+              locator: {
+                halfSample: true,
+                patchSize: "medium",
+              },
+              locate: true,
             },
-            decoder: { 
-              readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader"],
-              multiple: false,
-              debug: {
-                drawBoundingBox: true,
-                showFrequency: false,
-                drawScanline: true,
-                showPattern: false
+            (err) => {
+              if (err) {
+                reject(err)
+                return
               }
-            },
-            locator: {
-              halfSample: true,
-              patchSize: "medium",
-            },
-            locate: true,
-          },
-          (err) => {
-            if (err) {
-              console.error("Error al inicializar Quagga:", err)
-              setError("Error al inicializar el escáner. Por favor, intenta de nuevo.")
-              if (stream) {
-                stream.getTracks().forEach(track => track.stop())
-              }
-              if (quaggaContainer?.parentNode) {
-                quaggaContainer.parentNode.removeChild(quaggaContainer)
-              }
-              return
+              resolve()
             }
-            setIsScanning(true)
-            setIsLoading(false)
-            setShowVideo(true)
-            Quagga.start()
-          }
-        )
+          )
+        })
+
+        setIsScanning(true)
+        setIsLoading(false)
+        setShowVideo(true)
+        Quagga.start()
+
       } catch (err: any) {
         console.error("Error al acceder a la cámara:", err)
         let errorMessage = "Error al acceder a la cámara. Por favor, verifica los permisos."
@@ -532,11 +547,24 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
           errorMessage = "No se encontró ninguna cámara disponible."
         } else if (err.name === "NotReadableError") {
           errorMessage = "La cámara está siendo usada por otra aplicación. Por favor, cierra otras aplicaciones que puedan estar usando la cámara."
+        } else if (err.message === "Tiempo de espera agotado al cargar el video") {
+          errorMessage = "La cámara tardó demasiado en iniciar. Por favor, intenta de nuevo."
         }
         
         setError(errorMessage)
         setIsLoading(false)
         setShowVideo(false)
+
+        // Limpiar recursos en caso de error
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop())
+        }
+        if (quaggaContainer?.parentNode) {
+          quaggaContainer.parentNode.removeChild(quaggaContainer)
+        }
+        if (isScanning) {
+          Quagga.stop()
+        }
       }
     }
 
