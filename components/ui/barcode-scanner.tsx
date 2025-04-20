@@ -237,17 +237,17 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
           </div>
         )}
 
-        {/* Camera selector */}
+        {/* Selector de cámara */}
         {cameras.length > 1 && (
-          <div className="absolute top-4 left-4 z-[70]">
+          <div className="absolute top-4 left-4 z-[120]">
             <Select value={selectedCamera} onValueChange={setSelectedCamera}>
-              <SelectTrigger className="w-[260px] bg-white/10 text-white border-white/20 backdrop-blur-sm">
+              <SelectTrigger className="w-[260px] bg-white/10 text-white border-white/20 backdrop-blur-sm z-[120]">
                 <SelectValue placeholder="Seleccionar cámara" />
               </SelectTrigger>
-              <SelectContent className="z-[80] max-h-64 overflow-y-auto backdrop-blur-md bg-black/90 text-white ring-1 ring-white/20">
+              <SelectContent className="z-[130] max-h-64 overflow-y-auto backdrop-blur-md bg-black/90 text-white ring-1 ring-white/20">
                 {cameras.map((cam) => (
                   <SelectItem key={cam.deviceId} value={cam.deviceId} className="focus:bg-white/10">
-                    {cam.label || `Cámara ${cam.deviceId.slice(0, 5)}`}
+                    {cam.label || `Cámara ${cam.deviceId.slice(0,5)}`}
                   </SelectItem>
                 ))}
               </SelectContent>
