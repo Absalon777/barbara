@@ -441,12 +441,18 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream
-          // Esperar a que el video esté listo
-          await new Promise((resolve) => {
+          
+          // Esperar a que el video esté completamente listo
+          await new Promise<void>((resolve) => {
             if (videoRef.current) {
-              videoRef.current.onloadedmetadata = () => {
-                resolve(true)
+              const checkVideo = () => {
+                if (videoRef.current?.videoWidth && videoRef.current?.videoHeight) {
+                  resolve()
+                } else {
+                  setTimeout(checkVideo, 100)
+                }
               }
+              videoRef.current.onloadedmetadata = checkVideo
             }
           })
         }
@@ -458,6 +464,9 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         quaggaContainer.style.position = 'absolute'
         quaggaContainer.style.visibility = 'hidden'
         containerRef.current?.appendChild(quaggaContainer)
+
+        // Esperar un momento antes de inicializar Quagga
+        await new Promise(resolve => setTimeout(resolve, 500))
 
         Quagga.init(
           {
