@@ -34,7 +34,10 @@ interface BarcodeScannerProps {
 /* -------------------------------------------------------------------------- */
 /*                                Helpers                                     */
 /* -------------------------------------------------------------------------- */
-const setFullSize = (el?: HTMLElement | null) => {
+/** Devuelve `true` si la etiqueta sugiere que es cámara frontal */
+const isFront = (label: string) => /front|user|selfie/i.test(label)
+
+const applyStyles = (el: HTMLElement | null, mirror: boolean) => {
   if (!el) return
   Object.assign(el.style, {
     position: "absolute",
@@ -42,7 +45,8 @@ const setFullSize = (el?: HTMLElement | null) => {
     width: "100%",
     height: "100%",
     objectFit: "cover",
-    transform: "scaleX(-1)",
+    transform: mirror ? "scaleX(-1)" : "none",
+    pointerEvents: "none", // deja pasar clics al UI
   })
 }
 
@@ -61,6 +65,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
   const [error, setError] = React.useState<string | null>(null)
   const [cameras, setCameras] = React.useState<MediaDeviceInfo[]>([])
   const [selectedCamera, setSelectedCamera] = React.useState<string>("")
+  const [mirror, setMirror] = React.useState(false)
   const [pendingCode, setPendingCode] = React.useState<string | null>(null)
   const [askConfirm, setAskConfirm] = React.useState(false)
 
@@ -128,12 +133,14 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
       return
     }
 
-    const fixElements = () => {
-      setFullSize(containerRef.current?.querySelector("video") as HTMLElement)
-      setFullSize(containerRef.current?.querySelector("canvas") as HTMLElement)
-    }
-    fixElements()
-    const mo = new MutationObserver(fixElements)
+    const fix = () => {
+      const video = containerRef.current?.querySelector("video") as HTMLVideoElement | null;
+      const canvas = containerRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
+      applyStyles(video, mirror);
+      applyStyles(canvas, mirror);
+    };
+    fix()
+    const mo = new MutationObserver(fix)
     if (containerRef.current) mo.observe(containerRef.current, { childList: true })
 
     Quagga.onDetected((result) => {
@@ -149,7 +156,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
     Quagga.start()
     setStatus("Escáner listo")
     setLoading(false)
-  }, [selectedCamera, stopScanner, toast])
+  }, [selectedCamera, mirror, stopScanner, toast])
 
   /* -------------------------- Camera enumeration ------------------------- */
   React.useEffect(() => {
@@ -157,10 +164,14 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()
         const videoDevices = devices.filter((d) => d.kind === "videoinput")
-        const preferRear = (l: string) => !/front|ultra|wide|tele|zoom|0\.5x|2x|3x/i.test(l)
+
+        // Preferir trasera (omitimos ultra‑wide, tele, front)
+        const preferRear = (l: string) => !isFront(l) && !/ultra|wide|tele|zoom|0\.5x|2x|3x/i.test(l)
         const main = videoDevices.find((d) => preferRear(d.label)) || videoDevices[0]
+
         setCameras(videoDevices)
         setSelectedCamera(main?.deviceId || "")
+        setMirror(isFront(main?.label || ""))
       } catch (e) {
         console.error(e)
         setError("No se pudieron enumerar las cámaras")
@@ -170,8 +181,12 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
 
   /* ------------------------ Restart when selection changes -------------- */
   React.useEffect(() => {
-    if (selectedCamera) startScanner()
-  }, [selectedCamera, startScanner])
+    if (selectedCamera) {
+      const cam = cameras.find((c) => c.deviceId === selectedCamera)
+      setMirror(isFront(cam?.label || ""))
+      startScanner()
+    }
+  }, [selectedCamera, cameras, startScanner])
 
   /* ------------------------ Lifecycle cleanup --------------------------- */
   React.useEffect(() => {
@@ -224,14 +239,14 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
 
         {/* Camera selector */}
         {cameras.length > 1 && (
-          <div className="absolute top-4 left-4 z-20">
+          <div className="absolute top-4 left-4 z-30">
             <Select value={selectedCamera} onValueChange={setSelectedCamera}>
-              <SelectTrigger className="w-[230px] bg-white/10 text-white border-white/20 backdrop-blur-sm">
+              <SelectTrigger className="w-[240px] bg-white/10 text-white border-white/20 backdrop-blur-sm">
                 <SelectValue placeholder="Seleccionar cámara" />
               </SelectTrigger>
-              <SelectContent className="max-h-64 overflow-y-auto">
+              <SelectContent className="z-40 max-h-64 overflow-y-auto backdrop-blur-md bg-black/80 text-white">
                 {cameras.map((cam) => (
-                  <SelectItem key={cam.deviceId} value={cam.deviceId}>
+                  <SelectItem key={cam.deviceId} value={cam.deviceId} className="focus:bg-white/10">
                     {cam.label || `Cámara ${cam.deviceId.slice(0, 5)}`}
                   </SelectItem>
                 ))}
@@ -257,7 +272,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         )}
 
         {/* Close button */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
           <Button variant="destructive" onClick={onClose}>
             <X className="mr-2 h-4 w-4" />
             Cerrar
@@ -266,7 +281,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
 
         {/* Instructions */}
         {!loading && !error && (
-          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/70 text-white px-3 py-1 rounded-md text-sm z-20">
+          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/70 text-white px-3 py-1 rounded-md text-sm z-30">
             <Camera className="h-4 w-4" />
             Coloca el código dentro del recuadro
           </div>
