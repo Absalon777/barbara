@@ -9,6 +9,8 @@ import {
   Loader2,
   AlertTriangle,
 } from "lucide-react"
+import { useRef, useEffect, useState } from "react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 import { Button } from "./button"
 import {
@@ -32,7 +34,9 @@ interface BarcodeScannerProps {
 /* ---------- Componente ---------- */
 export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerProps) {
   /* --------------- Refs & state --------------- */
-  const videoRef = React.useRef<HTMLDivElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const scannerReady = React.useRef(false)
   const mounted = React.useRef(false)
 
@@ -45,6 +49,12 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
   const [askConfirm, setAskConfirm] = React.useState(false)
 
   const { toast } = useToast()
+
+  const [error, setError] = useState<string | null>(null)
+  const [isScanning, setIsScanning] = useState(false)
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
+  const [selectedCamera, setSelectedCamera] = useState<string>("")
+  const [isLoading, setIsLoading] = useState(true)
 
   /* --------------- Utilidades --------------- */
   const showMsg = React.useCallback(
@@ -379,131 +389,261 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
     }
   }
 
+  /* --------------- Utilidades adicionales --------------- */
+  useEffect(() => {
+    // Obtener lista de cámaras disponibles
+    const getCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoDevices = devices.filter(device => device.kind === 'videoinput')
+        setCameras(videoDevices)
+        if (videoDevices.length > 0) {
+          setSelectedCamera(videoDevices[0].deviceId)
+        }
+      } catch (err) {
+        console.error("Error al obtener cámaras:", err)
+      }
+    }
+
+    getCameras()
+  }, [])
+
+  useEffect(() => {
+    if (!selectedCamera) return
+
+    const initScanner = async () => {
+      try {
+        setIsLoading(true)
+        setError(null)
+
+        // Detener el escaneo actual si existe
+        if (isScanning) {
+          Quagga.stop()
+        }
+
+        // Configurar la cámara seleccionada
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: selectedCamera,
+            facingMode: "environment",
+          },
+        })
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+        }
+
+        Quagga.init(
+          {
+            inputStream: {
+              name: "Live",
+              type: "LiveStream",
+              target: containerRef.current as Element,
+              constraints: {
+                deviceId: selectedCamera,
+                facingMode: "environment",
+              },
+            },
+            decoder: { 
+              readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader"],
+              multiple: false,
+              debug: {
+                drawBoundingBox: true,
+                showFrequency: false,
+                drawScanline: true,
+                showPattern: false
+              }
+            },
+            locator: {
+              halfSample: true,
+              patchSize: "medium",
+            },
+            locate: true,
+          },
+          (err) => {
+            if (err) {
+              console.error("Error al inicializar Quagga:", err)
+              setError("Error al inicializar el escáner. Por favor, intenta de nuevo.")
+              return
+            }
+            setIsScanning(true)
+            setIsLoading(false)
+            Quagga.start()
+          }
+        )
+      } catch (err) {
+        console.error("Error al acceder a la cámara:", err)
+        setError("Error al acceder a la cámara. Por favor, verifica los permisos.")
+        setIsLoading(false)
+      }
+    }
+
+    initScanner()
+
+    return () => {
+      if (isScanning) {
+        Quagga.stop()
+      }
+      if (videoRef.current?.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream
+        stream.getTracks().forEach(track => track.stop())
+      }
+    }
+  }, [selectedCamera])
+
   /* --------------- Render --------------- */
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
-      {/* Contenedor principal centrado absolutamente */}
-      <div 
-        ref={videoRef}
-        className="w-full h-full flex justify-center items-center bg-black"
-        style={{
-          overflow: "hidden",
-          position: "relative"
-        }}
-      />
-
-      {/* overlay centrado */}
-      <div className="
-        absolute inset-1/2 
-        w-[70%] md:w-[60%] 
-        aspect-square md:aspect-video
-        -translate-x-1/2 -translate-y-1/2
-        border-4 border-blue-500/90 rounded-md
-        pointer-events-none
-        z-10
-      " />
-
-      {/* Botones principales (siempre visibles) */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
-        <Button onClick={manualCapture} disabled={processing || loading}>
-          <Camera className="mr-2 h-4 w-4" />
-          Capturar
-        </Button>
-        <Button variant="destructive" onClick={onClose}>
-          <X className="mr-2 h-4 w-4" />
-          Cerrar
-        </Button>
-      </div>
-
-      {/* =========  Mensajes / loading ========= */}
-      {(loading || processing) && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/60 text-white z-[15]">
-          <Loader2 className="h-10 w-10 animate-spin" />
-          <p>{status}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+      <div ref={containerRef} className="relative w-full max-w-2xl aspect-video bg-black rounded-lg overflow-hidden">
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+          </div>
+        )}
+        
+        <div className="absolute top-4 left-4 z-10">
+          <Select
+            value={selectedCamera}
+            onValueChange={setSelectedCamera}
+          >
+            <SelectTrigger className="w-[200px] bg-white/10 text-white border-white/20">
+              <SelectValue placeholder="Seleccionar cámara" />
+            </SelectTrigger>
+            <SelectContent>
+              {cameras.map((camera) => (
+                <SelectItem key={camera.deviceId} value={camera.deviceId}>
+                  {camera.label || `Cámara ${camera.deviceId.slice(0, 5)}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      )}
 
-      {/* =========  Error cámara ========= */}
-      {cameraErr && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 text-center text-white z-[15] p-6">
-          <AlertTriangle className="h-10 w-10 text-destructive" />
-          <p className="font-medium">{cameraErr}</p>
-          <Button onClick={onClose} variant="outline">
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          autoPlay
+          playsInline
+        />
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ display: "none" }}
+        />
+
+        {/* overlay centrado */}
+        <div className="
+          absolute inset-1/2 
+          w-[70%] md:w-[60%] 
+          aspect-square md:aspect-video
+          -translate-x-1/2 -translate-y-1/2
+          border-4 border-blue-500/90 rounded-md
+          pointer-events-none
+          z-10
+        " />
+
+        {/* Botones principales (siempre visibles) */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
+          <Button onClick={manualCapture} disabled={processing || loading}>
+            <Camera className="mr-2 h-4 w-4" />
+            Capturar
+          </Button>
+          <Button variant="destructive" onClick={onClose}>
+            <X className="mr-2 h-4 w-4" />
             Cerrar
           </Button>
         </div>
-      )}
 
-      {/* =========  Instrucciones ========= */}
-      {!loading && !processing && !cameraErr && (
-        <>
-          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-black/70 text-white px-3 py-2 rounded-md text-sm flex items-center gap-2 z-20">
-            <Camera className="h-4 w-4" />
-            Coloca el código dentro del recuadro azul
+        {/* =========  Mensajes / loading ========= */}
+        {(loading || processing) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/60 text-white z-[15]">
+            <Loader2 className="h-10 w-10 animate-spin" />
+            <p>{status}</p>
           </div>
+        )}
 
-          {/* Botón cerrar (arriba a la derecha) */}
-          <Button
-            variant="destructive"
-            size="icon"
-            className="absolute top-4 right-4 z-20"
-            onClick={onClose}
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </>
-      )}
+        {/* =========  Error cámara ========= */}
+        {cameraErr && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 text-center text-white z-[15] p-6">
+            <AlertTriangle className="h-10 w-10 text-destructive" />
+            <p className="font-medium">{cameraErr}</p>
+            <Button onClick={onClose} variant="outline">
+              Cerrar
+            </Button>
+          </div>
+        )}
 
-      {/* =========  Diálogo confirmación / reintento ========= */}
-      <Dialog 
-        open={askConfirm} 
-        onOpenChange={(open) => {
-          if (!open) {
-            setAskConfirm(false);
-            setPendingCode(null);
-            if (!pendingCode) {
-              startScanner();
+        {/* =========  Instrucciones ========= */}
+        {!loading && !processing && !cameraErr && (
+          <>
+            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-black/70 text-white px-3 py-2 rounded-md text-sm flex items-center gap-2 z-20">
+              <Camera className="h-4 w-4" />
+              Coloca el código dentro del recuadro azul
+            </div>
+
+            {/* Botón cerrar (arriba a la derecha) */}
+            <Button
+              variant="destructive"
+              size="icon"
+              className="absolute top-4 right-4 z-20"
+              onClick={onClose}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </>
+        )}
+
+        {/* =========  Diálogo confirmación / reintento ========= */}
+        <Dialog 
+          open={askConfirm} 
+          onOpenChange={(open) => {
+            if (!open) {
+              setAskConfirm(false);
+              setPendingCode(null);
+              if (!pendingCode) {
+                startScanner();
+              }
             }
-          }
-        }}
-      >
-        <DialogContent className="z-[100]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-center gap-2">
-              {pendingCode ? (
-                <>
-                  <Check className="text-green-500 h-5 w-5" /> Código detectado
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="text-destructive h-5 w-5" /> Sin resultados
-                </>
-              )}
-            </DialogTitle>
-            <DialogDescription className="text-center mt-2">
-              {pendingCode ? (
-                <>
-                  Se detectó el código <br />
-                  <strong className="text-xl">{pendingCode}</strong>
-                  <br />
-                  ¿Deseas utilizarlo?
-                </>
-              ) : (
-                <>No se encontró un código de barras. ¿Deseas reintentar?</>
-              )}
-            </DialogDescription>
-          </DialogHeader>
+          }}
+        >
+          <DialogContent className="z-[100]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-center gap-2">
+                {pendingCode ? (
+                  <>
+                    <Check className="text-green-500 h-5 w-5" /> Código detectado
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="text-destructive h-5 w-5" /> Sin resultados
+                  </>
+                )}
+              </DialogTitle>
+              <DialogDescription className="text-center mt-2">
+                {pendingCode ? (
+                  <>
+                    Se detectó el código <br />
+                    <strong className="text-xl">{pendingCode}</strong>
+                    <br />
+                    ¿Deseas utilizarlo?
+                  </>
+                ) : (
+                  <>No se encontró un código de barras. ¿Deseas reintentar?</>
+                )}
+              </DialogDescription>
+            </DialogHeader>
 
-          <DialogFooter className="flex flex-col sm:flex-row gap-3">
-            <Button variant="outline" onClick={confirmNo}>
-              {pendingCode ? "No, volver a intentar" : "No, cerrar escáner"}
-            </Button>
-            <Button onClick={confirmYes}>
-              {pendingCode ? "Sí, usar código" : "Sí, reintentar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="flex flex-col sm:flex-row gap-3">
+              <Button variant="outline" onClick={confirmNo}>
+                {pendingCode ? "No, volver a intentar" : "No, cerrar escáner"}
+              </Button>
+              <Button onClick={confirmYes}>
+                {pendingCode ? "Sí, usar código" : "Sí, reintentar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 } 
