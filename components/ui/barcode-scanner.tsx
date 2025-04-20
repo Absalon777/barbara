@@ -397,16 +397,17 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         const devices = await navigator.mediaDevices.enumerateDevices()
         const videoDevices = devices.filter(device => device.kind === 'videoinput')
         
-        // Encontrar la cámara trasera por defecto
-        const rearCamera = videoDevices.find(device => 
-          device.label.toLowerCase().includes('back') || 
-          device.label.toLowerCase().includes('rear') ||
-          device.label.toLowerCase().includes('trasera')
-        ) || videoDevices[0] // Si no se encuentra, usar la primera cámara
+        // Encontrar la cámara principal (1x)
+        const mainCamera = videoDevices.find(device => 
+          !device.label.toLowerCase().includes('ultra') &&
+          !device.label.toLowerCase().includes('wide') &&
+          !device.label.toLowerCase().includes('gran') &&
+          !device.label.toLowerCase().includes('angular')
+        ) || videoDevices[0]
 
         setCameras(videoDevices)
-        if (rearCamera) {
-          setSelectedCamera(rearCamera.deviceId)
+        if (mainCamera) {
+          setSelectedCamera(mainCamera.deviceId)
         }
       } catch (err) {
         console.error("Error al obtener cámaras:", err)
@@ -434,21 +435,19 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             deviceId: selectedCamera,
-            facingMode: "environment", // Cambiar a environment para cámara trasera
-            width: 640,
-            height: 480,
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            aspectRatio: { ideal: 1.7777777778 }, // 16:9
           },
         })
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream
-          // Esperar a que el video esté listo y tenga dimensiones
+          // Esperar a que el video esté listo
           await new Promise((resolve) => {
             if (videoRef.current) {
               videoRef.current.onloadedmetadata = () => {
-                // Forzar dimensiones específicas
-                videoRef.current!.width = 640
-                videoRef.current!.height = 480
                 resolve(true)
               }
             }
@@ -457,8 +456,8 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
 
         // Crear un contenedor específico para Quagga
         const quaggaContainer = document.createElement('div')
-        quaggaContainer.style.width = '640px'
-        quaggaContainer.style.height = '480px'
+        quaggaContainer.style.width = '100%'
+        quaggaContainer.style.height = '100%'
         quaggaContainer.style.position = 'absolute'
         quaggaContainer.style.visibility = 'hidden'
         containerRef.current?.appendChild(quaggaContainer)
@@ -471,9 +470,10 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
               target: quaggaContainer,
               constraints: {
                 deviceId: selectedCamera,
-                facingMode: "environment", // Cambiar a environment para cámara trasera
-                width: 640,
-                height: 480,
+                facingMode: "environment",
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                aspectRatio: { ideal: 1.7777777778 }, // 16:9
               },
             },
             decoder: { 
@@ -563,6 +563,9 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
           className="w-full h-full object-cover"
           autoPlay
           playsInline
+          style={{
+            transform: "scaleX(-1)", // Invertir horizontalmente para mejor experiencia
+          }}
         />
         <canvas
           ref={canvasRef}
