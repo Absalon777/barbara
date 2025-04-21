@@ -44,7 +44,7 @@ const styleMedia = (el: HTMLElement | null, mirror: boolean) => {
     inset: "0",
     width: "100%",
     height: "auto",
-    maxHeight: "100%",
+    maxHeight: "none",
     objectFit: "contain",
     transform: mirror ? "scaleX(-1)" : "none",
     pointerEvents: "none",
@@ -258,7 +258,7 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
         {/* Video container for Quagga */}
         <div
           ref={containerRef}
-          className="relative w-screen max-w-full h-auto aspect-video bg-black"
+          className="relative w-screen max-w-full h-auto bg-black"
         />
 
         {/* Overlay */}
