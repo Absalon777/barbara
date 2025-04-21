@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import Quagga, { QuaggaJSConfigObject } from "@ericblade/quagga2"
+import Quagga from "@ericblade/quagga2"
 import {
   X,
   Camera,
@@ -38,18 +38,14 @@ interface BarcodeScannerProps {
 const isFront = (label: string) => /front|user|selfie/i.test(label)
 
 const styleMedia = (el: HTMLElement | null, mirror: boolean) => {
-  if (!el) return
+  if (!el) return;
   Object.assign(el.style, {
-    position: "absolute",
-    inset: "0",
     width: "100%",
-    height: "auto",
-    maxHeight: "none",
+    height: "100%",
     objectFit: "contain",
     transform: mirror ? "scaleX(-1)" : "none",
-    pointerEvents: "none",
-  })
-}
+  });
+};
 
 /* -------------------------------------------------------------------------- */
 /*                                Component                                   */
@@ -58,10 +54,6 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
   /* -------------------------------- Refs --------------------------------- */
   /** Contenedor donde Quagga inyectará <video> y <canvas> */
   const containerRef = React.useRef<HTMLDivElement>(null)
-  const mounted = React.useRef(false)
-
-  /* ------------------------------- State --------------------------------- */
-  const [status, setStatus] = React.useState("Inicializando cámara…")
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [cameras, setCameras] = React.useState<MediaDeviceInfo[]>([])
@@ -73,33 +65,17 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
   const { toast } = useToast()
 
   /* --------------------------- Helper functions -------------------------- */
-  const showMsg = React.useCallback(
-    (title: string, description: string, type: "default" | "destructive" = "default") => {
-      if (!mounted.current) return
-      setStatus(description)
-      toast({ title, description, variant: type, duration: 2500 })
-    },
-    [toast]
-  )
-
-  const stopScanner = React.useCallback(() => {
-    try {
-      Quagga.stop()
-    } catch {
-      /* ignore */
-    }
-  }, [])
-
-  /* ---------------------------- Start scanner ---------------------------- */
   const startScanner = React.useCallback(async () => {
     if (!containerRef.current) return
+    
+    try {
+      Quagga.stop()
+    } catch {}
 
-    stopScanner()
     setLoading(true)
     setError(null)
-    setStatus("Solicitando cámara…")
 
-    const config: QuaggaJSConfigObject = {
+    const config = {
       inputStream: {
         name: "Live",
         type: "LiveStream" as const,
@@ -112,71 +88,63 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
       },
       decoder: {
         readers: [
-          "ean_reader",
-          "ean_8_reader",
-          "upc_reader",
-          "upc_e_reader",
+          { format: "ean_reader", config: { supplements: [] } },
+          { format: "ean_8_reader", config: { supplements: [] } },
+          { format: "upc_reader", config: { supplements: [] } },
+          { format: "upc_e_reader", config: { supplements: [] } }
         ],
-        multiple: false,
+        multiple: false
       },
       locate: true,
       locator: { patchSize: "medium", halfSample: true },
-    }
+    };
 
     try {
-      await new Promise<void>((resolve, reject) => {
-        Quagga.init(config, (err) => (err ? reject(err) : resolve()))
+      await Quagga.init(config);
+      
+      const video = containerRef.current.querySelector("video")
+      const canvas = containerRef.current.querySelector("canvas")
+      
+      styleMedia(video, mirror)
+      styleMedia(canvas, mirror)
+
+      Quagga.onDetected((r) => {
+        const code = r?.codeResult?.code
+        if (!code) return
+        Quagga.stop()
+        setPendingCode(code)
+        setAskConfirm(true)
+        navigator.vibrate?.(200)
+        toast({ title: "¡Código detectado!", description: code })
       })
-    } catch (e) {
-      console.error(e)
-      setError("No se pudo inicializar la cámara (ver permisos)")
+
+      Quagga.start()
       setLoading(false)
-      return
+    } catch (err) {
+      console.error(err)
+      setError("No se pudo inicializar la cámara")
+      setLoading(false)
     }
-
-    const fix = () => {
-      const video = containerRef.current?.querySelector("video") as HTMLVideoElement | null;
-      const canvas = containerRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
-      styleMedia(video, mirror);
-      styleMedia(canvas, mirror);
-    };
-    fix()
-    new MutationObserver(fix).observe(containerRef.current, { childList: true })
-
-    Quagga.onDetected((result) => {
-      const code = result?.codeResult?.code
-      if (!code) return
-      stopScanner()
-      setPendingCode(code)
-      setAskConfirm(true)
-      if (navigator.vibrate) navigator.vibrate(200)
-      toast({ title: "¡Código detectado!", description: code })
-    })
-
-    Quagga.start()
-    setStatus("Escáner listo")
-    setLoading(false)
-  }, [selectedCamera, mirror, stopScanner, toast])
+  }, [selectedCamera, mirror, toast])
 
   /* -------------------------- Camera enumeration ------------------------- */
   React.useEffect(() => {
     (async () => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()
-        const videoDevices = devices.filter((d) => d.kind === "videoinput")
-
-        // Preferir trasera (omitimos ultra‑wide, tele, front)
-        const preferRear = (l: string) => !isFront(l) && !/ultra|wide|tele|zoom|0\.5x|2x|3x/i.test(l)
-        const main = videoDevices.find((d) => preferRear(d.label)) || videoDevices[0]
-
-        setCameras(videoDevices)
+        const vids = devices.filter((d) => d.kind === "videoinput")
+        const main = vids.find((d) => !isFront(d.label)) || vids[0]
+        setCameras(vids)
         setSelectedCamera(main?.deviceId || "")
         setMirror(isFront(main?.label || ""))
-      } catch (e) {
-        console.error(e)
+      } catch {
         setError("No se pudieron enumerar las cámaras")
       }
     })()
+
+    return () => {
+      try { Quagga.stop() } catch {}
+    }
   }, [])
 
   /* ------------------------ Restart when selection changes -------------- */
@@ -188,118 +156,77 @@ export default function BarcodeScanner({ onDetected, onClose }: BarcodeScannerPr
     }
   }, [selectedCamera, cameras, startScanner])
 
-  /* ------------------------ Lifecycle cleanup --------------------------- */
-  React.useEffect(() => {
-    mounted.current = true
-    document.body.style.overflow = "hidden"
-    return () => {
-      mounted.current = false
-      document.body.style.overflow = "unset"
-      stopScanner()
-    }
-  }, [stopScanner])
-
-  /* ---------------------- Confirmation handlers ------------------------- */
-  const confirmYes = () => {
-    if (pendingCode) onDetected(pendingCode)
-    setAskConfirm(false)
-    setPendingCode(null)
-    startScanner()
-  }
-
-  const confirmNo = () => {
-    setAskConfirm(false)
-    setPendingCode(null)
-    startScanner()
-  }
-
   /* ------------------------------- Render -------------------------------- */
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-      {/* Container */}
-      <div className="relative w-full max-w-none bg-black">
-        {/* Loader & status */}
-        {loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white z-50">
-            <Loader2 className="h-10 w-10 animate-spin" />
-            <p>{status}</p>
+      <div className="relative w-full flex flex-col items-center justify-center">
+        {/* Video container */}
+        <div className="w-full flex justify-center">
+          <div ref={containerRef} className="relative w-full bg-black">
+            {!loading && !error && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="border-4 border-blue-500/90 rounded-md w-[95%] h-[95%]" />
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
-        {/* Error */}
-        {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 text-white p-6 z-50">
-            <AlertTriangle className="h-10 w-10 text-destructive" />
-            <p className="text-center max-w-xs">{error}</p>
-            <Button onClick={onClose} variant="outline">
-              Cerrar
-            </Button>
-          </div>
-        )}
-
-        {/* Selector de cámara */}
+        {/* Camera selector */}
         {cameras.length > 1 && (
-          <div className="absolute top-4 left-4 z-[120]">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[120]">
             <Select value={selectedCamera} onValueChange={setSelectedCamera}>
-              <SelectTrigger className="w-[260px] bg-white/10 text-white border-white/20 backdrop-blur-sm z-[120]">
+              <SelectTrigger className="w-64 bg-white/10 text-white border-white/20 backdrop-blur-sm">
                 <SelectValue placeholder="Seleccionar cámara" />
               </SelectTrigger>
               <SelectContent className="z-[130] max-h-64 overflow-y-auto backdrop-blur-md bg-black/90 text-white ring-1 ring-white/20">
                 {cameras.map((cam) => (
-                  <SelectItem key={cam.deviceId} value={cam.deviceId} className="focus:bg-white/10">
-                    {cam.label || `Cámara ${cam.deviceId.slice(0,5)}`}
-                  </SelectItem>
+                  <SelectItem key={cam.deviceId} value={cam.deviceId}>{cam.label || `Cam ${cam.deviceId.slice(0,5)}`}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         )}
 
-        {/* Video container for Quagga */}
-        <div
-          ref={containerRef}
-          className="relative w-screen max-w-full h-auto bg-black"
-        />
+        {/* Loading state */}
+        {loading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-2">
+            <Loader2 className="animate-spin h-10 w-10" />
+            <p>Iniciando cámara...</p>
+          </div>
+        )}
 
-        {/* Overlay */}
-        {!loading && !error && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div style={{ width: "95%", height: "95%" }} className="border-4 border-blue-500/90 rounded-md" />
+        {/* Error state */}
+        {error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-4 bg-black/90 p-6">
+            <AlertTriangle className="h-10 w-10 text-destructive" />
+            <p>{error}</p>
           </div>
         )}
 
         {/* Close button */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[70]">
-          <Button variant="destructive" onClick={onClose}>
-            <X className="mr-2 h-4 w-4" />
-            Cerrar
-          </Button>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[120]">
+          <Button variant="destructive" onClick={onClose}><X className="mr-2 h-4 w-4" />Cerrar</Button>
         </div>
 
         {/* Instructions */}
         {!loading && !error && (
-          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/70 text-white px-3 py-1 rounded-md text-sm z-[70]">
-            <Camera className="h-4 w-4" />
-            Coloca el código dentro del recuadro
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[110] bg-black/70 text-white px-3 py-1 rounded-md text-sm flex items-center gap-1">
+            <Camera className="h-4 w-4" /> Coloca el código dentro del recuadro
           </div>
         )}
 
         {/* Confirmation dialog */}
-        <Dialog open={askConfirm} onOpenChange={(o) => !o && confirmNo()}>
-          <DialogContent className="z-[100]">
+        <Dialog open={askConfirm} onOpenChange={(o) => !o && (setAskConfirm(false), startScanner())}>
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 justify-center">
-                <Check className="text-green-500 h-5 w-5" /> Código detectado
+              <DialogTitle className="flex items-center justify-center gap-2">
+                <Check className="text-green-500" /> Código detectado
               </DialogTitle>
-              <DialogDescription className="text-center mt-2">
-                Se detectó<br />
-                <strong className="text-xl">{pendingCode}</strong>
-                <br />¿Usar este código?
-              </DialogDescription>
+              <DialogDescription className="text-center">{pendingCode}</DialogDescription>
             </DialogHeader>
-            <DialogFooter className="flex flex-col sm:flex-row gap-3">
-              <Button variant="outline" onClick={confirmNo}>No</Button>
-              <Button onClick={confirmYes}>Sí</Button>
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => { setAskConfirm(false); startScanner(); }}>No</Button>
+              <Button onClick={() => { pendingCode && onDetected(pendingCode); setAskConfirm(false); }}>Sí</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
